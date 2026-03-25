@@ -1,0 +1,6 @@
+Project Ideas
+
+1. Build a CLI tool that uses MCP to connect to multiple data sources
+2. Create a dashboard that visualizes MCP tool usage metrics
+3. Explore using MCP for automated code review workflows
+4. Investigate MCP server chaining for complex pipelines

@@ -1,0 +1,13 @@
+Team Standup - Feb 13, 2026
+
+Attendees: Alice, Bob, Charlie
+
+Discussion:
+- Sprint progress is on track
+- MCP proof-of-concept demo scheduled for Friday
+- Need to finalize API documentation by end of week
+
+Action Items:
+1. Alice: Complete unit tests for the auth module
+2. Bob: Review pull request #42
+3. Charlie: Set up staging environment

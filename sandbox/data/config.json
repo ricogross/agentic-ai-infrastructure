@@ -1,0 +1,10 @@
+{
+  "app_name": "Agentic AI PoC",
+  "version": "0.1.0",
+  "features": {
+    "sqlite_explorer": true,
+    "filesystem_browser": true,
+    "logging": false
+  },
+  "max_connections": 5
+}

@@ -1,0 +1,6 @@
+{
+  "dependencies": ["."],
+  "graphs": {
+    "orchestrator": "./orchestrator_agent.py:graph"
+  }
+}
