@@ -1,5 +1,7 @@
+import functools
 from pathlib import Path
 
+import langchain_mcp_adapters.sessions
 import uvicorn
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.server.apps import A2AStarletteApplication
@@ -14,6 +16,18 @@ from langchain_mcp_adapters.client import MultiServerMCPClient
 load_dotenv()
 
 SANDBOX_DIR = str(Path(__file__).parent / "sandbox")
+
+# Workaround: the MCP client starts the server without a console (CREATE_NO_WINDOW on
+# Windows) but hands it this process's stderr. If that stderr is a real console, the
+# Node-based filesystem server dies on its first log write ("McpError: Connection
+# closed"). langchain-mcp-adapters has no option for the server's stderr, so send it
+# to a log file instead.
+SERVER_LOG = open(
+    Path(__file__).parent / "filesystem_mcp_server.log", "a", encoding="utf-8"
+)
+langchain_mcp_adapters.sessions.stdio_client = functools.partial(
+    langchain_mcp_adapters.sessions.stdio_client, errlog=SERVER_LOG
+)
 
 MODEL = "openai:gpt-4o-mini"
 PORT = 5002
