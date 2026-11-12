@@ -16,3 +16,6 @@ demo.db
 
 # LangGraph dev server state
 .langgraph_api/
+
+# Logs
+*.log
