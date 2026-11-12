@@ -78,7 +78,7 @@ A multi-agent system demonstrating three open agentic protocols working together
 
 ## Prerequisites
 
-- Python 3.12
+- [uv](https://docs.astral.sh/uv/) (installs Python 3.14 automatically)
 - Node.js 20+
 - pnpm (`npm install -g pnpm@9`)
 - OpenAI API key
@@ -86,15 +86,14 @@ A multi-agent system demonstrating three open agentic protocols working together
 ## Initial Setup
 
 ```bash
-# 1. Set up Python backend (commands might differ for Unix-based OS)
-python -m venv .venv
-.venv\Scripts\pip install -r requirements.txt
+# 1. Set up the Python backend (creates .venv from uv.lock)
+uv sync
 
-# 2. Modify the .env file by adding your OpenAI API key. The file should contain a single line like:
+# 2. Create a .env file in the project root containing your OpenAI API key:
 OPENAI_API_KEY=sk-proj-...
 
 # 3. Seed the sample database
-python seed_db.py
+uv run python seed_db.py
 
 # 4. Set up the frontend
 cd frontend
@@ -107,13 +106,13 @@ Start each service in its own terminal in the following order:
 
 ```bash
 # Terminal 1 — Database Agent
-python a2a_database_agent.py
+uv run python a2a_database_agent.py
 
 # Terminal 2 — Filesystem Agent
-python a2a_filesystem_agent.py
+uv run python a2a_filesystem_agent.py
 
 # Terminal 3 — LangGraph Orchestrator
-langgraph dev --port 8123 --no-browser
+uv run langgraph dev --port 8123 --no-browser
 
 # Terminal 4 — Frontend
 cd frontend
@@ -135,7 +134,8 @@ There the chat UI is hosted.
 | `seed_db.py` | Seeds `demo.db` with sample products and orders |
 | `sandbox/` | Sample files for the filesystem agent |
 | `frontend/` | CopilotKit + Next.js app (scaffolded via `npx create-ag-ui-app`) |
-| `requirements.txt` | Python dependencies |
+| `pyproject.toml` | Python project and pinned dependencies (managed with uv) |
+| `uv.lock` | Locked versions of all Python dependencies |
 
 ## Deeper dive into the functionality
 

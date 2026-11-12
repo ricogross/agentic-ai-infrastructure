@@ -1,0 +1,25 @@
+[project]
+name = "agentic-ai-infrastructure"
+version = "0.1.0"
+description = "Reference multi-agent system showing MCP, A2A and AG-UI working together"
+readme = "README.md"
+authors = [
+    { name = "Rico Gross" }
+]
+requires-python = ">=3.14"
+dependencies = [
+    "a2a-sdk[http-server]==0.3.24",
+    "httpx==0.28.1",
+    "langchain-mcp-adapters==0.2.1",
+    "langchain[openai]==1.2.10",
+    "langgraph==1.0.9",
+    "langgraph-cli[inmem]==0.4.12",
+    "mcp[cli]==1.26.0",
+    "openai==2.24.0",
+    "python-dotenv==1.1.1",
+]
+
+[tool.uv]
+# Resolve sub-dependencies as they were at the seminar submission, so the old pins
+# get compatible versions. Remove this when upgrading the dependencies.
+exclude-newer = "2026-03-26T00:00:00Z"
