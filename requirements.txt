@@ -1,9 +1,0 @@
-mcp[cli]==1.26.0
-httpx==0.28.1
-openai==2.24.0
-python-dotenv==1.1.1
-langchain[openai]==1.2.10
-langchain-mcp-adapters==0.2.1
-langgraph==1.0.9
-langgraph-cli[inmem]==0.4.12
-a2a-sdk[http-server]==0.3.24
