@@ -93,7 +93,7 @@ uv sync
 OPENAI_API_KEY=sk-proj-...
 
 # 3. Seed the sample database
-uv run python seed_db.py
+uv run seed-db
 
 # 4. Set up the frontend
 cd frontend
@@ -106,10 +106,10 @@ Start each service in its own terminal in the following order:
 
 ```bash
 # Terminal 1 — Database Agent
-uv run python a2a_database_agent.py
+uv run database-agent
 
 # Terminal 2 — Filesystem Agent
-uv run python a2a_filesystem_agent.py
+uv run filesystem-agent
 
 # Terminal 3 — LangGraph Orchestrator
 uv run langgraph dev --port 8123 --no-browser
@@ -126,12 +126,13 @@ There the chat UI is hosted.
 
 | File | Purpose |
 |------|---------|
-| `orchestrator_agent.py` | LangGraph orchestrator agent — routes requests to specialized agents over A2A or answers them directly |
+| `src/agentic_ai_infrastructure/` | Python package with all backend code (`PROJECT_ROOT` in `__init__.py`) |
+| `src/agentic_ai_infrastructure/orchestrator_agent.py` | LangGraph orchestrator agent — routes requests to specialized agents over A2A or answers them directly |
+| `src/agentic_ai_infrastructure/a2a_database_agent.py` | A2A server wrapping a LangChain database agent (port 5001) |
+| `src/agentic_ai_infrastructure/a2a_filesystem_agent.py` | A2A server wrapping a LangChain filesystem agent (port 5002) |
+| `src/agentic_ai_infrastructure/sqlite_mcp_server.py` | Custom MCP server exposing SQLite tools |
+| `src/agentic_ai_infrastructure/seed_db.py` | Seeds `demo.db` with sample products and orders |
 | `langgraph.json` | LangGraph server config — points to the orchestrator graph |
-| `a2a_database_agent.py` | A2A server wrapping a LangChain database agent (port 5001) |
-| `a2a_filesystem_agent.py` | A2A server wrapping a LangChain filesystem agent (port 5002) |
-| `sqlite_mcp_server.py` | Custom MCP server exposing SQLite tools |
-| `seed_db.py` | Seeds `demo.db` with sample products and orders |
 | `sandbox/` | Sample files for the filesystem agent |
 | `frontend/` | CopilotKit + Next.js app (scaffolded via `npx create-ag-ui-app`) |
 | `pyproject.toml` | Python project and pinned dependencies (managed with uv) |
@@ -158,7 +159,7 @@ There the chat UI is hosted.
 - `AgentExecutor` is the A2A SDKs abstract base class.
 - `_ensure_agent(self)` ensures that the LangChain agent is only created on the first request. This is also where A2A and MCP connect:
   - `MultiServerMCPClient` configures the `SQLite MCP Server` connection.
-  - When `get_tools()` is called, it spawns `sqlite_mcp_server.py` as a subprocess, sends a `ListToolsRequest` over stdio, and gets back all the available tools of the MCP server.
+  - When `get_tools()` is called, it spawns the SQLite MCP server (`python -m agentic_ai_infrastructure.sqlite_mcp_server`) as a subprocess, sends a `ListToolsRequest` over stdio, and gets back all the available tools of the MCP server.
   - `handle_tool_error = True` ensures tool errors are returned to the LLM as text rather than crashing the agent.
   - `create_agent()` builds the AI agent — an LLM that can reason about which tools to call, call them, observe the results and iterate until it has an answer.
 - To properly utilize the `AgentExecutor` base class, the `execute()` method is implemented and the A2A framework calls it whenever a message arrives (`context` contains the incoming A2A message (the question from the **Orchestrator Agent**); `event_queue` is used to push events back to the caller (`TaskUpdater` is a convenience wrapper around the event queue)). This is the core — an A2A request comes in, the LLM reasons and calls MCP tools and the response streams back over A2A.

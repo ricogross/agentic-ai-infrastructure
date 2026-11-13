@@ -19,6 +19,16 @@ dependencies = [
     "python-dotenv==1.1.1",
 ]
 
+[project.scripts]
+seed-db = "agentic_ai_infrastructure.seed_db:main"
+sqlite-mcp-server = "agentic_ai_infrastructure.sqlite_mcp_server:main"
+database-agent = "agentic_ai_infrastructure.a2a_database_agent:main"
+filesystem-agent = "agentic_ai_infrastructure.a2a_filesystem_agent:main"
+
+[build-system]
+requires = ["uv_build>=0.13.1,<0.14.0"]
+build-backend = "uv_build"
+
 [tool.uv]
 # Resolve sub-dependencies as they were at the seminar submission, so the old pins
 # get compatible versions. Remove this when upgrading the dependencies.

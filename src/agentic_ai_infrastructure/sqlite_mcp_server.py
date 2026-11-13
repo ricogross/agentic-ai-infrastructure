@@ -1,9 +1,10 @@
 import sqlite3
-from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 
-DB_PATH = Path(__file__).parent / "demo.db"
+from agentic_ai_infrastructure import PROJECT_ROOT
+
+DB_PATH = PROJECT_ROOT / "demo.db"
 
 mcp = FastMCP(
     name="sqlite-explorer",
@@ -100,5 +101,9 @@ def query(sql: str) -> str:
         conn.close()
 
 
-if __name__ == "__main__":
+def main():
     mcp.run(transport="stdio")
+
+
+if __name__ == "__main__":
+    main()

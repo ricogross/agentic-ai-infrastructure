@@ -1,5 +1,6 @@
-from pathlib import Path
+import functools
 
+import langchain_mcp_adapters.sessions
 import uvicorn
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.server.apps import A2AStarletteApplication
@@ -11,29 +12,43 @@ from dotenv import load_dotenv
 from langchain.agents import create_agent
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
+from agentic_ai_infrastructure import PROJECT_ROOT
+
 load_dotenv()
 
-VENV_PYTHON = str(Path(__file__).parent / ".venv" / "Scripts" / "python.exe")
-SERVER_SCRIPT = str(Path(__file__).parent / "sqlite_mcp_server.py")
+SANDBOX_DIR = str(PROJECT_ROOT / "sandbox")
+
+# Workaround: the MCP client starts the server without a console (CREATE_NO_WINDOW on
+# Windows) but hands it this process's stderr. If that stderr is a real console, the
+# Node-based filesystem server dies on its first log write ("McpError: Connection
+# closed"). langchain-mcp-adapters has no option for the server's stderr, so send it
+# to a log file instead.
+SERVER_LOG = open(PROJECT_ROOT / "filesystem_mcp_server.log", "a", encoding="utf-8")
+langchain_mcp_adapters.sessions.stdio_client = functools.partial(
+    langchain_mcp_adapters.sessions.stdio_client, errlog=SERVER_LOG
+)
 
 MODEL = "openai:gpt-4o-mini"
-PORT = 5001
+PORT = 5002
 
-SYSTEM_PROMPT = """\
-You are a database assistant specialized in exploring and querying a SQLite \
-database. Use the connected MCP server to interact with the database.
+SYSTEM_PROMPT = f"""\
+You are a filesystem assistant specialized in browsing and reading files \
+within a sandboxed directory.
+
+The allowed root directory is: {SANDBOX_DIR}
 
 Your workflow:
-1. If you don't know the schema yet, start by listing tables and describing them.
-2. Write precise SQL queries to answer the user's question.
-3. Present results clearly and concisely.
+1. If you need to find files, start with directory_tree or list_directory.
+2. Use read_text_file to read file contents.
+3. Use get_file_info for metadata (size, timestamps).
+4. Present findings clearly.
 
-Only SELECT statements are allowed.
+You can ONLY access files inside the sandbox directory.
 """
 
 
-class DatabaseAgentExecutor(AgentExecutor):
-    """Bridges A2A requests to the LangChain database agent with streaming."""
+class FilesystemAgentExecutor(AgentExecutor):
+    """Bridges A2A requests to the LangChain filesystem agent with streaming."""
 
     def __init__(self):
         self._agent = None
@@ -44,9 +59,13 @@ class DatabaseAgentExecutor(AgentExecutor):
             return
         self._client = MultiServerMCPClient(
             {
-                "sqlite": {
-                    "command": VENV_PYTHON,
-                    "args": [SERVER_SCRIPT],
+                "filesystem": {
+                    "command": "npx",
+                    "args": [
+                        "-y",
+                        "@modelcontextprotocol/server-filesystem",
+                        SANDBOX_DIR,
+                    ],
                     "transport": "stdio",
                 },
             }
@@ -61,11 +80,10 @@ class DatabaseAgentExecutor(AgentExecutor):
         updater = TaskUpdater(event_queue, context.task_id, context.context_id)
         await updater.start_work()
 
-        user_text = context.get_user_input()  # extract text from incoming A2A message
+        user_text = context.get_user_input()
         print(f"[A2A] Received request: {user_text!r}", flush=True)
         accumulated = ""
 
-        # LangChain ReAct loop
         async for chunk, _metadata in self._agent.astream(
             {"messages": [{"role": "user", "content": user_text}]},
             stream_mode="messages",
@@ -81,7 +99,6 @@ class DatabaseAgentExecutor(AgentExecutor):
                 preview = str(chunk.content)[:120]
                 print(f"[MCP] tool result: {preview}", flush=True)
 
-            # Stream text content back to caller as it arrives over A2A
             if (
                 hasattr(chunk, "content")
                 and isinstance(chunk.content, str)
@@ -95,30 +112,30 @@ class DatabaseAgentExecutor(AgentExecutor):
             f"[A2A] Streaming response complete ({len(accumulated)} chars)", flush=True
         )
         final_msg = updater.new_agent_message([Part(root=TextPart(text=accumulated))])
-        await updater.complete(message=final_msg)  # signals completion to A2A caller
+        await updater.complete(message=final_msg)
 
     async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:
         raise Exception("cancel not supported")
 
 
 skill = AgentSkill(
-    id="database_query",
-    name="Database Query",
-    description="Explore SQLite database schemas and execute read-only SQL queries. "
-    "Can list tables, describe columns, and run SELECT statements.",
-    tags=["database", "sql", "sqlite", "query", "schema"],
+    id="filesystem_browse",
+    name="Filesystem Browser",
+    description="Browse directories, read text files, get file metadata, and search "
+    "for files within a sandboxed directory tree.",
+    tags=["filesystem", "files", "directory", "read", "browse"],
     examples=[
-        "What tables are in the database?",
-        "Which product has the most orders?",
-        "Show me all products under $50",
-        "How many orders did Alice place?",
+        "What files are in the sandbox?",
+        "Read the meeting notes",
+        "Show me the directory tree",
+        "What does the config.json file contain?",
     ],
 )
 
 agent_card = AgentCard(
-    name="Database Agent",
-    description="A specialized agent for exploring and querying a SQLite database "
-    "with products and orders data.",
+    name="Filesystem Agent",
+    description="A specialized agent for browsing and reading files in a sandboxed "
+    "directory containing notes and configuration files.",
     url=f"http://localhost:{PORT}/",
     version="1.0.0",
     default_input_modes=["text"],
@@ -130,11 +147,11 @@ agent_card = AgentCard(
 
 def main():
     handler = DefaultRequestHandler(
-        agent_executor=DatabaseAgentExecutor(),
+        agent_executor=FilesystemAgentExecutor(),
         task_store=InMemoryTaskStore(),
     )
     app = A2AStarletteApplication(agent_card=agent_card, http_handler=handler)
-    print(f"Database Agent (A2A) starting on http://localhost:{PORT}")
+    print(f"Filesystem Agent (A2A) starting on http://localhost:{PORT}")
     print(f"Agent Card: http://localhost:{PORT}/.well-known/agent-card.json")
     uvicorn.run(app.build(), host="127.0.0.1", port=PORT, log_level="warning")
 
