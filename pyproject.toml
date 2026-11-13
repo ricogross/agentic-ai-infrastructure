@@ -31,6 +31,7 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
+    "pre-commit>=4.7.0",
     "ruff==0.17.1",
     "ty==0.0.89",
 ]
@@ -40,7 +41,7 @@ dev = [
 # get compatible versions. Remove this when upgrading the dependencies.
 exclude-newer = "2026-03-26T00:00:00Z"
 # Dev tools are exempt: they should be current, not from March 2026.
-exclude-newer-package = { ruff = false, ty = false }
+exclude-newer-package = { pre-commit = false, ruff = false, ty = false }
 
 [tool.ruff]
 # Cache outside the repo. Safe to share: Ruff splits it per version and per project.

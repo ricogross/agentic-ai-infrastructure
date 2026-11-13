@@ -1,0 +1,75 @@
+default_install_hook_types: [pre-commit, commit-msg]
+default_stages: [pre-commit]
+
+repos:
+  # Generic file hygiene and syntax checks.
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+      - id: end-of-file-fixer
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: [--maxkb=512]
+      - id: check-yaml
+      - id: check-toml
+      - id: pretty-format-json
+        args: [--autofix, --indent=4, --no-sort-keys]
+
+  # Keep uv.lock in sync with pyproject.toml. Keep rev close to your local uv version.
+  # Runs before Ruff and ty, so they already use the updated uv.lock.
+  # Important because they pull their versions from uv.lock.
+  - repo: https://github.com/astral-sh/uv-pre-commit
+    rev: 0.13.1
+    hooks:
+      - id: uv-lock
+
+  # Ruff and ty run as local hooks with the versions from uv.lock, so editor, hooks and CI share
+  # one version. The settings are copied from the official ruff-pre-commit and ty-pre-commit hooks.
+  # --frozen: use uv.lock as it is, do not update it.
+
+  # Lint first (with fixes), then format: fixes can leave code that needs reformatting.
+  - repo: local # https://github.com/astral-sh/ruff-pre-commit
+    hooks:
+      # Run the linter.
+      - id: ruff-check
+        name: ruff check
+        entry: uv run --frozen ruff check --force-exclude
+        args: [--fix]
+        language: unsupported
+        types_or: [python, pyi, jupyter]
+        require_serial: true
+      # Run the formatter.
+      - id: ruff-format
+        name: ruff format
+        entry: uv run --frozen ruff format --force-exclude
+        language: unsupported
+        types_or: [python, pyi, jupyter, markdown] # also Python code blocks in Markdown
+        require_serial: true
+
+  - repo: local # https://github.com/astral-sh/ty-pre-commit
+    hooks:
+      # Run against the whole project on every commit: a change in one file can break another.
+      - id: ty
+        name: ty
+        entry: uv run --frozen ty check
+        language: unsupported
+        pass_filenames: false
+        always_run: true
+        require_serial: true
+
+  # Block commits that contain secrets (scans the staged changes only).
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks
+
+  # Commit messages must be Conventional Commits, e.g. "feat: add csv export".
+  # Merge and fixup! commits made by git itself stay allowed (no --strict).
+  - repo: https://github.com/compilerla/conventional-pre-commit
+    rev: v4.4.0
+    hooks:
+      - id: conventional-pre-commit
+        stages: [commit-msg]
+        args: [--verbose] # on rejection, show the expected format and the allowed types

@@ -132,6 +132,13 @@ uv run ruff format    # format
 uv run ty check       # type-check
 ```
 
+The pre-commit hooks run these checks (plus file hygiene, a secret scan and a Conventional Commits check of the message) on every commit:
+
+```bash
+uv run pre-commit install           # once per clone
+uv run pre-commit run --all-files   # run all hooks by hand
+```
+
 ## Files
 
 | File | Purpose |
