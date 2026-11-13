@@ -139,7 +139,7 @@ uv run pre-commit install           # once per clone
 uv run pre-commit run --all-files   # run all hooks by hand
 ```
 
-CI (`.github/workflows/checks.yaml`) runs the same hooks on every pull request, and `main` only accepts pull requests whose checks pass.
+CI (`.github/workflows/checks.yaml`) runs the same hooks on every pull request, and `main` only accepts pull requests whose checks pass. A second workflow (`pr-title.yaml`) checks that the pull request title is a Conventional Commit, because GitHub uses it as the message of the squash commit on `main`.
 
 ## Files
 
