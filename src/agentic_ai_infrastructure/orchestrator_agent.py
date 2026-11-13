@@ -63,10 +63,10 @@ async def _delegate(url: str, agent_name: str, question: str) -> str:
         resolver = A2ACardResolver(httpx_client=http_client, base_url=url)
         card = await resolver.get_agent_card()
 
-    a2a_http = httpx.AsyncClient(timeout=httpx.Timeout(120.0))
-    config = ClientConfig(streaming=True, httpx_client=a2a_http)
-    client = await ClientFactory.connect(card, client_config=config)
-    try:
+    # Closing the httpx client closes the A2A connection, too.
+    async with httpx.AsyncClient(timeout=httpx.Timeout(120.0)) as a2a_http:
+        config = ClientConfig(streaming=True, httpx_client=a2a_http)
+        client = await ClientFactory.connect(card, client_config=config)
         message = create_text_message_object(content=question)
         response_text = ""
         event_count = 0
@@ -83,8 +83,6 @@ async def _delegate(url: str, agent_name: str, question: str) -> str:
             flush=True,
         )
         return response_text or "(Agent returned no response)"
-    finally:
-        await client.close()
 
 
 def _make_tool_name(agent_name: str) -> str:
