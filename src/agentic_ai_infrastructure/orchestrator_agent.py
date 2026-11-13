@@ -145,8 +145,7 @@ def _build_system_prompt(cards: list[AgentCard]) -> str:
         tag_str = ", ".join(sorted(tags))
         example_str = "; ".join(examples[:4])
         agent_descriptions.append(
-            f"- For questions about {tag_str} — use the {tool_name} tool. "
-            f"(e.g. {example_str})"
+            f"- For questions about {tag_str} — use the {tool_name} tool. (e.g. {example_str})"
         )
 
     routing_rules = "\n".join(agent_descriptions)
