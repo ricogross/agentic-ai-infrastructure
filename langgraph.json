@@ -1,6 +1,8 @@
 {
-  "dependencies": ["."],
-  "graphs": {
-    "orchestrator": "./src/agentic_ai_infrastructure/orchestrator_agent.py:graph"
-  }
+    "dependencies": [
+        "."
+    ],
+    "graphs": {
+        "orchestrator": "./src/agentic_ai_infrastructure/orchestrator_agent.py:graph"
+    }
 }
