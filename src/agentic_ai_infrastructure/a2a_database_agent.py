@@ -6,7 +6,16 @@ from a2a.server.apps import A2AStarletteApplication
 from a2a.server.events import EventQueue
 from a2a.server.request_handlers import DefaultRequestHandler
 from a2a.server.tasks import InMemoryTaskStore, TaskUpdater
-from a2a.types import AgentCapabilities, AgentCard, AgentSkill, Part, TaskState, TextPart
+from a2a.types import (
+    AgentCapabilities,
+    AgentCard,
+    AgentSkill,
+    Part,
+    TaskState,
+    TextPart,
+    UnsupportedOperationError,
+)
+from a2a.utils.errors import ServerError
 from dotenv import load_dotenv
 from langchain.agents import create_agent
 from langchain_core.messages import AIMessage, ToolMessage
@@ -92,7 +101,8 @@ class DatabaseAgentExecutor(AgentExecutor):
         await updater.complete(message=final_msg)  # signals completion to A2A caller
 
     async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:
-        raise Exception("cancel not supported")
+        # A running LangChain agent can't be stopped, so report that as defined by A2A.
+        raise ServerError(error=UnsupportedOperationError())
 
 
 skill = AgentSkill(

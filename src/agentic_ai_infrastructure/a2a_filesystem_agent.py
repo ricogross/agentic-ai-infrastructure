@@ -7,7 +7,16 @@ from a2a.server.apps import A2AStarletteApplication
 from a2a.server.events import EventQueue
 from a2a.server.request_handlers import DefaultRequestHandler
 from a2a.server.tasks import InMemoryTaskStore, TaskUpdater
-from a2a.types import AgentCapabilities, AgentCard, AgentSkill, Part, TaskState, TextPart
+from a2a.types import (
+    AgentCapabilities,
+    AgentCard,
+    AgentSkill,
+    Part,
+    TaskState,
+    TextPart,
+    UnsupportedOperationError,
+)
+from a2a.utils.errors import ServerError
 from dotenv import load_dotenv
 from langchain.agents import create_agent
 from langchain_core.messages import AIMessage, ToolMessage
@@ -24,7 +33,7 @@ SANDBOX_DIR = str(PROJECT_ROOT / "sandbox")
 # Node-based filesystem server dies on its first log write ("McpError: Connection
 # closed"). langchain-mcp-adapters has no option for the server's stderr, so send it
 # to a log file instead.
-SERVER_LOG = open(PROJECT_ROOT / "filesystem_mcp_server.log", "a", encoding="utf-8")
+SERVER_LOG = open(PROJECT_ROOT / "filesystem_mcp_server.log", "a", encoding="utf-8")  # noqa: SIM115
 # partial() makes errlog keyword-only; the adapter only ever passes the server parameters.
 langchain_mcp_adapters.sessions.stdio_client = functools.partial(  # ty: ignore[invalid-assignment]
     langchain_mcp_adapters.sessions.stdio_client, errlog=SERVER_LOG
@@ -113,7 +122,8 @@ class FilesystemAgentExecutor(AgentExecutor):
         await updater.complete(message=final_msg)
 
     async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:
-        raise Exception("cancel not supported")
+        # A running LangChain agent can't be stopped, so report that as defined by A2A.
+        raise ServerError(error=UnsupportedOperationError())
 
 
 skill = AgentSkill(
