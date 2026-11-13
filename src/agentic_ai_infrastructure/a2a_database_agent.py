@@ -6,9 +6,10 @@ from a2a.server.apps import A2AStarletteApplication
 from a2a.server.events import EventQueue
 from a2a.server.request_handlers import DefaultRequestHandler
 from a2a.server.tasks import InMemoryTaskStore, TaskUpdater
-from a2a.types import AgentCapabilities, AgentCard, AgentSkill, Part, TextPart
+from a2a.types import AgentCapabilities, AgentCard, AgentSkill, Part, TaskState, TextPart
 from dotenv import load_dotenv
 from langchain.agents import create_agent
+from langchain_core.messages import AIMessage, ToolMessage
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
 load_dotenv()
@@ -36,25 +37,27 @@ class DatabaseAgentExecutor(AgentExecutor):
         self._agent = None
         self._client = None
 
-    async def _ensure_agent(self):
-        if self._agent is not None:
-            return
-        self._client = MultiServerMCPClient(
-            {
-                "sqlite": {
-                    "command": sys.executable,
-                    "args": ["-m", "agentic_ai_infrastructure.sqlite_mcp_server"],
-                    "transport": "stdio",
-                },
-            }
-        )
-        tools = await self._client.get_tools()
-        for tool in tools:
-            tool.handle_tool_error = True
-        self._agent = create_agent(MODEL, tools, system_prompt=SYSTEM_PROMPT)
+    async def _get_agent(self):
+        if self._agent is None:
+            self._client = MultiServerMCPClient(
+                {
+                    "sqlite": {
+                        "command": sys.executable,
+                        "args": ["-m", "agentic_ai_infrastructure.sqlite_mcp_server"],
+                        "transport": "stdio",
+                    },
+                }
+            )
+            tools = await self._client.get_tools()
+            for tool in tools:
+                tool.handle_tool_error = True
+            self._agent = create_agent(MODEL, tools, system_prompt=SYSTEM_PROMPT)
+        return self._agent
 
     async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
-        await self._ensure_agent()
+        if context.task_id is None or context.context_id is None:
+            raise ValueError("A2A request without task or context ID")
+        agent = await self._get_agent()
         updater = TaskUpdater(event_queue, context.task_id, context.context_id)
         await updater.start_work()
 
@@ -63,26 +66,26 @@ class DatabaseAgentExecutor(AgentExecutor):
         accumulated = ""
 
         # LangChain ReAct loop
-        async for chunk, _metadata in self._agent.astream(
+        async for chunk, _metadata in agent.astream(
             {"messages": [{"role": "user", "content": user_text}]},
             stream_mode="messages",
         ):
             # Log MCP tool calls and results
-            if hasattr(chunk, "tool_calls") and chunk.tool_calls:
+            if isinstance(chunk, AIMessage) and chunk.tool_calls:
                 for tc in chunk.tool_calls:
                     print(
                         f"[MCP] tool call: {tc['name']}({tc.get('args', {})})",
                         flush=True,
                     )
-            if chunk.__class__.__name__ == "ToolMessage":
+            if isinstance(chunk, ToolMessage):
                 preview = str(chunk.content)[:120]
                 print(f"[MCP] tool result: {preview}", flush=True)
 
-            # Stream text content back to caller as it arrives over A2A
-            if hasattr(chunk, "content") and isinstance(chunk.content, str) and chunk.content:
+            # Stream the agent's own text (not tool results) back to the caller over A2A
+            if isinstance(chunk, AIMessage) and isinstance(chunk.content, str) and chunk.content:
                 accumulated += chunk.content
                 msg = updater.new_agent_message([Part(root=TextPart(text=accumulated))])
-                await updater.update_status("working", message=msg)
+                await updater.update_status(TaskState.working, message=msg)
 
         print(f"[A2A] Streaming response complete ({len(accumulated)} chars)", flush=True)
         final_msg = updater.new_agent_message([Part(root=TextPart(text=accumulated))])

@@ -167,7 +167,7 @@ uv run ty check       # type-check
 - This file sits at the intersection of two protocols. From the outside, it is an A2A server — it speaks JSON-RPC, serves an `Agent Card`, receives questions over A2A from the **Orchestrator Agent** and streams responses via SSE. From the inside, it is an MCP client — it spawns **SQLite MCP server** to answer requests by calling its tools and uses an LLM to reason about the results. The LangChain ReAct agent is the glue between the two. Essentially, the MCP-client + Agent are wrapped inside of a A2A-compliant server.
 - The `SYSTEM_PROMPT` instructs the LLM on how to behave during the conversation.
 - `AgentExecutor` is the A2A SDKs abstract base class.
-- `_ensure_agent(self)` ensures that the LangChain agent is only created on the first request. This is also where A2A and MCP connect:
+- `_get_agent()` creates the LangChain agent on the first request and returns it on every later one. This is also where A2A and MCP connect:
   - `MultiServerMCPClient` configures the `SQLite MCP Server` connection.
   - When `get_tools()` is called, it spawns the SQLite MCP server (`python -m agentic_ai_infrastructure.sqlite_mcp_server`) as a subprocess, sends a `ListToolsRequest` over stdio, and gets back all the available tools of the MCP server.
   - `handle_tool_error = True` ensures tool errors are returned to the LLM as text rather than crashing the agent.
