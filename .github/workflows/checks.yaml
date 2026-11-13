@@ -1,0 +1,30 @@
+# Runs the project's pre-commit hooks on every pull request and on pushes to main.
+# Nothing tool-specific is pinned here: the hooks and their versions come from
+# .pre-commit-config.yaml, the pre-commit and pytest versions from uv.lock.
+# A tests job joins once there are tests.
+name: checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  pre-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      # uv picks the Python from .python-version (downloading it if the runner
+      # lacks it) and installs the dev dependencies on the first `uv run`.
+      - uses: astral-sh/setup-uv@v10.3.0
+      # pre-commit builds one environment per hook repo. Keep them between runs;
+      # the key changes with .pre-commit-config.yaml, so a bumped rev rebuilds them.
+      - uses: actions/cache@v6.1.0
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}
+      # --locked: fail if uv.lock is out of date. Without it, uv silently re-locks
+      #   in the runner and a stale uv.lock passes the uv-lock hook.
+      # --all-files: check the whole repo; nothing is staged in CI.
+      # --show-diff-on-failure: print what a fixing hook changed, so the log shows why.
+      - run: uv run --locked pre-commit run --all-files --show-diff-on-failure

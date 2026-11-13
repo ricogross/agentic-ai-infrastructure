@@ -139,6 +139,8 @@ uv run pre-commit install           # once per clone
 uv run pre-commit run --all-files   # run all hooks by hand
 ```
 
+CI (`.github/workflows/checks.yaml`) runs the same hooks on every pull request, and `main` only accepts pull requests whose checks pass.
+
 ## Files
 
 | File | Purpose |
