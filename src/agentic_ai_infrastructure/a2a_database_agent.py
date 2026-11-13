@@ -79,18 +79,12 @@ class DatabaseAgentExecutor(AgentExecutor):
                 print(f"[MCP] tool result: {preview}", flush=True)
 
             # Stream text content back to caller as it arrives over A2A
-            if (
-                hasattr(chunk, "content")
-                and isinstance(chunk.content, str)
-                and chunk.content
-            ):
+            if hasattr(chunk, "content") and isinstance(chunk.content, str) and chunk.content:
                 accumulated += chunk.content
                 msg = updater.new_agent_message([Part(root=TextPart(text=accumulated))])
                 await updater.update_status("working", message=msg)
 
-        print(
-            f"[A2A] Streaming response complete ({len(accumulated)} chars)", flush=True
-        )
+        print(f"[A2A] Streaming response complete ({len(accumulated)} chars)", flush=True)
         final_msg = updater.new_agent_message([Part(root=TextPart(text=accumulated))])
         await updater.complete(message=final_msg)  # signals completion to A2A caller
 

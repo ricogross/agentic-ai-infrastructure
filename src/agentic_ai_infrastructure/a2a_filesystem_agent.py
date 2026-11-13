@@ -99,18 +99,12 @@ class FilesystemAgentExecutor(AgentExecutor):
                 preview = str(chunk.content)[:120]
                 print(f"[MCP] tool result: {preview}", flush=True)
 
-            if (
-                hasattr(chunk, "content")
-                and isinstance(chunk.content, str)
-                and chunk.content
-            ):
+            if hasattr(chunk, "content") and isinstance(chunk.content, str) and chunk.content:
                 accumulated += chunk.content
                 msg = updater.new_agent_message([Part(root=TextPart(text=accumulated))])
                 await updater.update_status("working", message=msg)
 
-        print(
-            f"[A2A] Streaming response complete ({len(accumulated)} chars)", flush=True
-        )
+        print(f"[A2A] Streaming response complete ({len(accumulated)} chars)", flush=True)
         final_msg = updater.new_agent_message([Part(root=TextPart(text=accumulated))])
         await updater.complete(message=final_msg)
 
