@@ -29,7 +29,31 @@ filesystem-agent = "agentic_ai_infrastructure.a2a_filesystem_agent:main"
 requires = ["uv_build>=0.13.1,<0.14.0"]
 build-backend = "uv_build"
 
+[dependency-groups]
+dev = [
+    "ruff==0.17.1",
+    "ty==0.0.89",
+]
+
 [tool.uv]
 # Resolve sub-dependencies as they were at the seminar submission, so the old pins
 # get compatible versions. Remove this when upgrading the dependencies.
 exclude-newer = "2026-03-26T00:00:00Z"
+# Dev tools are exempt: they should be current, not from March 2026.
+exclude-newer-package = { ruff = false, ty = false }
+
+[tool.ruff]
+# Cache outside the repo. Safe to share: Ruff splits it per version and per project.
+cache-dir = "~/.cache/ruff"
+line-length = 100
+
+[tool.ruff.lint]
+extend-select = [
+    "S", # security checks
+]
+ignore = []
+
+[tool.ruff.format]
+quote-style = "double"
+docstring-code-format = true
+indent-style = "space"

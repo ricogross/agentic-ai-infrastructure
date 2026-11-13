@@ -122,6 +122,16 @@ pnpm dev
 Then open http://localhost:3000 in your browser.
 There the chat UI is hosted.
 
+## Development
+
+Ruff (lint and format) and ty (type checks) are dev dependencies and come with `uv sync`:
+
+```bash
+uv run ruff check     # lint
+uv run ruff format    # format
+uv run ty check       # type-check
+```
+
 ## Files
 
 | File | Purpose |
