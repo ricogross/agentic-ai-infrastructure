@@ -3,9 +3,10 @@ Seed script — creates a local SQLite database named 'demo.db' with sample data
 """
 
 import sqlite3
-from pathlib import Path
 
-DB_PATH = Path(__file__).parent / "demo.db"
+from agentic_ai_infrastructure import PROJECT_ROOT
+
+DB_PATH = PROJECT_ROOT / "demo.db"
 
 
 def main():
