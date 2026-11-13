@@ -1,0 +1,28 @@
+# The squash commit on main takes the pull request's title as its message, and no local hook
+# ever sees that message. This job checks the title with the commit-msg hook from
+# .pre-commit-config.yaml, so titles and commits follow the same rules.
+name: pr-title
+
+on:
+  pull_request:
+    # edited: the title changed. synchronize: new commits, which need their own passing check.
+    types: [opened, edited, reopened, synchronize]
+
+permissions:
+  contents: read
+
+jobs:
+  pr-title:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: astral-sh/setup-uv@v10.3.0
+      # The title goes through an environment variable, never straight into the script:
+      # inlined, a crafted title could run commands in the runner (script injection).
+      # --only-dev: pre-commit is all this needs, not the app's dependencies.
+      - env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          printf '%s\n' "$TITLE" > "$RUNNER_TEMP/pr-title.txt"
+          uv run --locked --only-dev pre-commit run conventional-pre-commit \
+            --hook-stage commit-msg --commit-msg-filename "$RUNNER_TEMP/pr-title.txt"
