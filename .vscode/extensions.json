@@ -1,0 +1,16 @@
+{
+    "recommendations": [
+        "ms-python.python",
+        "charliermarsh.ruff",
+        "astral-sh.ty",
+        "redhat.vscode-yaml",
+        "tombi-toml.tombi"
+    ],
+    "unwantedRecommendations": [
+        "ms-python.black-formatter",
+        "ms-python.isort",
+        "ms-python.pylint",
+        "ms-python.flake8",
+        "ms-python.autopep8"
+    ]
+}
