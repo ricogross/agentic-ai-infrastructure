@@ -14,6 +14,7 @@ import re
 import httpx
 from a2a.client import (
     A2ACardResolver,
+    A2AClientError,
     ClientConfig,
     ClientFactory,
     create_text_message_object,
@@ -50,7 +51,7 @@ async def _discover_agents() -> list[AgentCard]:
                     f"[A2A] Discovered: {card.name} at {url} (skills: {skills})",
                     flush=True,
                 )
-            except Exception as e:
+            except A2AClientError as e:
                 print(f"[A2A] Warning: could not reach {url}: {e}", flush=True)
     return cards
 

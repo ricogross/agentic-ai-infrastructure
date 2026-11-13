@@ -28,7 +28,7 @@ def list_tables() -> str:
         ).fetchall()
         tables = [row["name"] for row in rows]
         return "\n".join(tables) if tables else "(no tables found)"
-    except Exception as e:
+    except sqlite3.Error as e:
         return f"SQL Error: {e}"
     finally:
         conn.close()
@@ -53,7 +53,7 @@ def describe_table(table_name: str) -> str:
             pk = "YES" if r["pk"] else ""
             lines.append(f"{r['name']:<20} {r['type']:<15} {nullable:<10} {pk:<5}")
         return "\n".join(lines)
-    except Exception as e:
+    except sqlite3.Error as e:
         return f"SQL Error: {e}"
     finally:
         conn.close()
@@ -95,7 +95,7 @@ def query(sql: str) -> str:
             "  ".join(v.ljust(w) for v, w in zip(vals, col_widths)) for vals in str_rows
         )
         return f"{header}\n{sep}\n{body}"
-    except Exception as e:
+    except sqlite3.Error as e:
         return f"SQL Error: {e}"
     finally:
         conn.close()
