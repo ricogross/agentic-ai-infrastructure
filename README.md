@@ -225,7 +225,7 @@ From the scaffolded parts, some demo components were deleted and three files wer
   - `graphId` — which graph to use (matches the key in `langgraph.json`: "orchestrator")
 - `CopilotRuntime` passes incoming POST requests to the defined `LangGraphAgent`. This then translates it into LangGraph API calls (create thread, send message, stream response). The LangGraph server runs the orchestrator graph. `LangGraphAgent` translates the LangGraph streaming events into AG-UI events (this is where AG-UI happens). Those AG-UI events stream back to the browser as server-sent events.
 
-`layout.tsx`: This wraps the entire app in the CopilotKit context. `runtimeUrl="/api/copilotkit"` tells it where to send requests — that is the `route.ts` API endpoint. Every CopilotKit component inside this tree (like CopilotChat) will use this connection.
+`layout.tsx`: This wraps the entire app in the CopilotKit context. `runtimeUrl="/api/copilotkit"` tells it where to send requests — that is the `route.ts` API endpoint. Every CopilotKit component inside this tree (like CopilotChat) will use this connection. `useSingleEndpoint` tells CopilotKit that `route.ts` answers every request on this one URL, so it doesn't probe `/api/copilotkit/info` first (which would end in a 404).
 
 `page.tsx`: The chat UI.
 
