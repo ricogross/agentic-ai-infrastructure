@@ -7,6 +7,11 @@ from agentic_ai_infrastructure import PROJECT_ROOT
 
 DB_PATH = PROJECT_ROOT / "demo.db"
 
+# The actions a statement in `query` may perform. SQLite's authorizer checks every action of a
+# statement, so this also stops ATTACH and VACUUM INTO, which write files even on a read-only
+# connection.
+READ_ACTIONS = {sqlite3.SQLITE_SELECT, sqlite3.SQLITE_READ, sqlite3.SQLITE_FUNCTION}
+
 mcp = FastMCP(
     name="sqlite-explorer",
     instructions="You have access to a local SQLite database. Use the tools to explore its schema and query data.",
@@ -14,9 +19,18 @@ mcp = FastMCP(
 
 
 def _get_connection() -> sqlite3.Connection:
-    conn = sqlite3.connect(str(DB_PATH))
+    # mode=ro: SQLite refuses every write, and a missing file is an error instead of a new,
+    # empty database.
+    try:
+        conn = sqlite3.connect(f"{DB_PATH.as_uri()}?mode=ro", uri=True)
+    except sqlite3.OperationalError as e:
+        raise ToolError(f"cannot open {DB_PATH.name} ({e}), run `uv run seed-db` first") from e
     conn.row_factory = sqlite3.Row
     return conn
+
+
+def _allow_only_reads(action: int, *_: str | None) -> int:
+    return sqlite3.SQLITE_OK if action in READ_ACTIONS else sqlite3.SQLITE_DENY
 
 
 @mcp.tool()
@@ -64,16 +78,13 @@ def describe_table(table_name: str) -> str:
 def query(sql: str) -> str:
     """Execute a read-only SQL query against the database and return results.
 
-    Only SELECT statements are allowed.
+    Only statements that read data are allowed, e.g. SELECT or WITH ... SELECT.
 
     Args:
-        sql: The SQL SELECT statement to execute.
+        sql: The SQL query to execute.
     """
-    stripped = sql.strip().upper()
-    if not stripped.startswith("SELECT"):
-        raise ToolError("only SELECT queries are allowed")
-
     conn = _get_connection()
+    conn.set_authorizer(_allow_only_reads)
     try:
         cursor = conn.execute(sql)
         rows = cursor.fetchall()
@@ -97,6 +108,8 @@ def query(sql: str) -> str:
         )
         return f"{header}\n{sep}\n{body}"
     except sqlite3.Error as e:
+        if e.sqlite_errorname == "SQLITE_AUTH":
+            raise ToolError("only read-only queries are allowed (SELECT, WITH ... SELECT)") from e
         raise ToolError(f"SQL error: {e}") from e
     finally:
         conn.close()
