@@ -1,6 +1,7 @@
 import sqlite3
 
 from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp.exceptions import ToolError
 
 from agentic_ai_infrastructure import PROJECT_ROOT
 
@@ -29,7 +30,7 @@ def list_tables() -> str:
         tables = [row["name"] for row in rows]
         return "\n".join(tables) if tables else "(no tables found)"
     except sqlite3.Error as e:
-        return f"SQL Error: {e}"
+        raise ToolError(f"SQL error: {e}") from e
     finally:
         conn.close()
 
@@ -45,7 +46,7 @@ def describe_table(table_name: str) -> str:
     try:
         rows = conn.execute(f"PRAGMA table_info('{table_name}')").fetchall()
         if not rows:
-            return f"Table '{table_name}' not found or has no columns."
+            raise ToolError(f"table {table_name!r} not found or has no columns")
         lines = [f"{'Column':<20} {'Type':<15} {'Nullable':<10} {'PK':<5}"]
         lines.append("-" * 50)
         for r in rows:
@@ -54,7 +55,7 @@ def describe_table(table_name: str) -> str:
             lines.append(f"{r['name']:<20} {r['type']:<15} {nullable:<10} {pk:<5}")
         return "\n".join(lines)
     except sqlite3.Error as e:
-        return f"SQL Error: {e}"
+        raise ToolError(f"SQL error: {e}") from e
     finally:
         conn.close()
 
@@ -70,7 +71,7 @@ def query(sql: str) -> str:
     """
     stripped = sql.strip().upper()
     if not stripped.startswith("SELECT"):
-        return "Error: only SELECT queries are allowed."
+        raise ToolError("only SELECT queries are allowed")
 
     conn = _get_connection()
     try:
@@ -96,7 +97,7 @@ def query(sql: str) -> str:
         )
         return f"{header}\n{sep}\n{body}"
     except sqlite3.Error as e:
-        return f"SQL Error: {e}"
+        raise ToolError(f"SQL error: {e}") from e
     finally:
         conn.close()
 

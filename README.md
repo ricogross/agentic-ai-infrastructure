@@ -169,6 +169,7 @@ CI (`.github/workflows/checks.yaml`) runs the same hooks on every pull request, 
   - Uses the docstring as the tool description (which the LLM sees when deciding which tool to call)
   - Infers the required input schema from the function signature. The docstring's `Args` section is parsed by FastMCP to provide parameter descriptions to the LLM.
 - Specifying `transport="stdio"` starts the MCP server using stdio transport. This means the server reads JSON-RPC requests from stdin and writes responses to stdout. It's not an HTTP server — it's a subprocess. The **Database Agent** launches this process and communicates with it over pipes. This is the standard MCP transport for local tools.
+- Tool failures are raised as `ToolError`. FastMCP then marks the result as an error (`isError`), so the agent sees a failed tool call instead of a normal answer that happens to contain an error message.
 - Key insight: This file is purely an MCP server — it knows nothing about A2A, LangChain or the frontend. It is a self-contained tool provider. The `@mcp.tool()` decorator is the entire MCP integration — everything else is just SQLite logic. That is the point of MCP: tool authors write normal functions, the protocol handles the rest.
 
 ### Database AI Agent (a2a_database_agent.py)
