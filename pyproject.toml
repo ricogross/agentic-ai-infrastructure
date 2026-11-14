@@ -8,15 +8,14 @@ authors = [
 ]
 requires-python = ">=3.14"
 dependencies = [
-    "a2a-sdk[http-server]==0.3.24",
-    "httpx==0.28.1",
-    "langchain-mcp-adapters==0.2.1",
-    "langchain[openai]==1.2.10",
-    "langgraph==1.0.9",
-    "langgraph-cli[inmem]==0.4.12",
-    "mcp[cli]==1.26.0",
-    "openai==2.24.0",
-    "python-dotenv==1.1.1",
+    "a2a-sdk[http-server]>=0.3.24,<0.4",
+    "httpx>=0.28.1",
+    "langchain-mcp-adapters>=0.3.2",
+    "langchain[openai]>=1.5.0",
+    "langgraph>=1.2.22",
+    "langgraph-cli[inmem]>=0.4.43",
+    "mcp[cli]>=1.30.0,<2",
+    "python-dotenv>=1.2.4",
 ]
 
 [project.scripts]
@@ -35,13 +34,6 @@ dev = [
     "ruff==0.17.1",
     "ty==0.0.89",
 ]
-
-[tool.uv]
-# Resolve sub-dependencies as they were at the seminar submission, so the old pins
-# get compatible versions. Remove this when upgrading the dependencies.
-exclude-newer = "2026-03-26T00:00:00Z"
-# Dev tools are exempt: they should be current, not from March 2026.
-exclude-newer-package = { pre-commit = false, ruff = false, ty = false }
 
 [tool.ruff]
 # Cache outside the repo. Safe to share: Ruff splits it per version and per project.
