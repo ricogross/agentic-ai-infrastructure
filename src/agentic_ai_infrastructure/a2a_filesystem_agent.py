@@ -27,6 +27,8 @@ from agentic_ai_infrastructure import PROJECT_ROOT
 load_dotenv()
 
 SANDBOX_DIR = str(PROJECT_ROOT / "sandbox")
+# Pinned: without a version, `npx -y` runs whatever npm published last, on every start.
+FILESYSTEM_SERVER = "@modelcontextprotocol/server-filesystem@2.3.0"
 
 # Workaround: the MCP client starts the server without a console (CREATE_NO_WINDOW on
 # Windows) but hands it this process's stderr. If that stderr is a real console, the
@@ -73,7 +75,7 @@ class FilesystemAgentExecutor(AgentExecutor):
                         "command": "npx",
                         "args": [
                             "-y",
-                            "@modelcontextprotocol/server-filesystem",
+                            FILESYSTEM_SERVER,
                             SANDBOX_DIR,
                         ],
                         "transport": "stdio",

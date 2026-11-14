@@ -79,7 +79,7 @@ A multi-agent system demonstrating three open agentic protocols working together
 ## Prerequisites
 
 - [uv](https://docs.astral.sh/uv/) (installs Python 3.14 automatically)
-- Node.js 20+
+- Node.js 24+
 - pnpm (`npm install -g pnpm@9`)
 - OpenAI API key
 
@@ -196,7 +196,7 @@ CI (`.github/workflows/checks.yaml`) runs the same hooks on every pull request, 
 This file is structurally identical to `a2a_database_agent.py`. The only differences are what MCP server it connects to and what it is specialized in. Only the key differences will be explained below:
 
 - Instead of a database path, this agent knows about a directory. The `SANDBOX_DIR` is embedded into the system prompt so the LLM knows the boundaries of what it can access.
-- Here, `MultiServerMCPClient` configures a connection to the prebuilt `Filesystem MCP Server`. Instead of spawning our own `sqlite_mcp_server.py`, it runs a `npx` command to spawn the prebuilt server `@modelcontextprotocol/server-filesystem`.
+- Here, `MultiServerMCPClient` configures a connection to the prebuilt `Filesystem MCP Server`. Its version is pinned in `FILESYSTEM_SERVER`, so every start runs the same server. Instead of spawning our own `sqlite_mcp_server.py`, it runs a `npx` command to spawn the prebuilt server `@modelcontextprotocol/server-filesystem`.
 
 ### Orchestrator AI Agent (orchestrator_agent.py)
 
