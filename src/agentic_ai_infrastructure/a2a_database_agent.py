@@ -1,25 +1,25 @@
 import sys
 
 import uvicorn
+from a2a.helpers import new_task_from_user_message
 from a2a.server.agent_execution import AgentExecutor, RequestContext
-from a2a.server.apps import A2AStarletteApplication
 from a2a.server.events import EventQueue
 from a2a.server.request_handlers import DefaultRequestHandler
+from a2a.server.routes import create_agent_card_routes, create_jsonrpc_routes
 from a2a.server.tasks import InMemoryTaskStore, TaskUpdater
 from a2a.types import (
     AgentCapabilities,
     AgentCard,
+    AgentInterface,
     AgentSkill,
     Part,
     TaskState,
-    TextPart,
-    UnsupportedOperationError,
 )
-from a2a.utils.errors import ServerError
 from dotenv import load_dotenv
 from langchain.agents import create_agent
 from langchain_core.messages import AIMessage, ToolMessage
 from langchain_mcp_adapters.client import MultiServerMCPClient
+from starlette.applications import Starlette
 
 load_dotenv()
 
@@ -64,10 +64,15 @@ class DatabaseAgentExecutor(AgentExecutor):
         return self._agent
 
     async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
-        if context.task_id is None or context.context_id is None:
-            raise ValueError("A2A request without task or context ID")
+        if context.message is None:
+            raise ValueError("A2A request without a message")
         agent = await self._get_agent()
-        updater = TaskUpdater(event_queue, context.task_id, context.context_id)
+        # A2A 1.0: the event stream of a task has to start with the task itself.
+        task = context.current_task
+        if task is None:
+            task = new_task_from_user_message(context.message)
+            await event_queue.enqueue_event(task)
+        updater = TaskUpdater(event_queue, task.id, task.context_id)
         await updater.start_work()
 
         user_text = context.get_user_input()  # extract text from incoming A2A message
@@ -93,16 +98,18 @@ class DatabaseAgentExecutor(AgentExecutor):
             # Stream the agent's own text (not tool results) back to the caller over A2A
             if isinstance(chunk, AIMessage) and isinstance(chunk.content, str) and chunk.content:
                 accumulated += chunk.content
-                msg = updater.new_agent_message([Part(root=TextPart(text=accumulated))])
-                await updater.update_status(TaskState.working, message=msg)
+                msg = updater.new_agent_message([Part(text=accumulated)])
+                await updater.update_status(TaskState.TASK_STATE_WORKING, message=msg)
 
         print(f"[A2A] Streaming response complete ({len(accumulated)} chars)", flush=True)
-        final_msg = updater.new_agent_message([Part(root=TextPart(text=accumulated))])
+        final_msg = updater.new_agent_message([Part(text=accumulated)])
         await updater.complete(message=final_msg)  # signals completion to A2A caller
 
     async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:
-        # A running LangChain agent can't be stopped, so report that as defined by A2A.
-        raise ServerError(error=UnsupportedOperationError())
+        # The SDK stops the running execute() itself, so only the new state is left to report.
+        if context.task_id is None or context.context_id is None:
+            raise ValueError("A2A cancel request without task or context ID")
+        await TaskUpdater(event_queue, context.task_id, context.context_id).cancel()
 
 
 skill = AgentSkill(
@@ -123,7 +130,13 @@ agent_card = AgentCard(
     name="Database Agent",
     description="A specialized agent for exploring and querying a SQLite database "
     "with products and orders data.",
-    url=f"http://localhost:{PORT}/",
+    supported_interfaces=[
+        AgentInterface(
+            protocol_binding="JSONRPC",
+            protocol_version="1.0",
+            url=f"http://localhost:{PORT}/",
+        ),
+    ],
     version="1.0.0",
     default_input_modes=["text"],
     default_output_modes=["text"],
@@ -136,11 +149,14 @@ def main():
     handler = DefaultRequestHandler(
         agent_executor=DatabaseAgentExecutor(),
         task_store=InMemoryTaskStore(),
+        agent_card=agent_card,
     )
-    app = A2AStarletteApplication(agent_card=agent_card, http_handler=handler)
+    app = Starlette(
+        routes=create_agent_card_routes(agent_card) + create_jsonrpc_routes(handler, rpc_url="/")
+    )
     print(f"Database Agent (A2A) starting on http://localhost:{PORT}")
     print(f"Agent Card: http://localhost:{PORT}/.well-known/agent-card.json")
-    uvicorn.run(app.build(), host="127.0.0.1", port=PORT, log_level="warning")
+    uvicorn.run(app, host="127.0.0.1", port=PORT, log_level="warning")
 
 
 if __name__ == "__main__":
