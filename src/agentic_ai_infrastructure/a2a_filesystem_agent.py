@@ -76,6 +76,8 @@ class FilesystemAgentExecutor(AgentExecutor):
                         "args": [
                             "-y",
                             FILESYSTEM_SERVER,
+                            # Serve only the tools that read, e.g. no write_file or move_file.
+                            "--read-only",
                             SANDBOX_DIR,
                         ],
                         "transport": "stdio",
