@@ -12,16 +12,9 @@ import asyncio
 import re
 
 import httpx
-from a2a.client import (
-    A2ACardResolver,
-    A2AClientError,
-    ClientConfig,
-    ClientFactory,
-    create_text_message_object,
-)
-from a2a.types import AgentCard
-from a2a.types import Message as A2AMessage
-from a2a.utils import get_message_text
+from a2a.client import A2ACardResolver, A2AClientError, ClientConfig, create_client
+from a2a.helpers import get_stream_response_text, new_text_message
+from a2a.types import AgentCard, Role, SendMessageRequest
 from dotenv import load_dotenv
 from langchain.agents import create_agent
 from langchain_core.tools import StructuredTool
@@ -56,31 +49,24 @@ async def _discover_agents() -> list[AgentCard]:
     return cards
 
 
-async def _delegate(url: str, agent_name: str, question: str) -> str:
+async def _delegate(card: AgentCard, question: str) -> str:
     """Send a question to a A2A agent and return the final response."""
-    print(f"[A2A] Delegating to {agent_name}: {question!r}", flush=True)
-
-    async with httpx.AsyncClient() as http_client:
-        resolver = A2ACardResolver(httpx_client=http_client, base_url=url)
-        card = await resolver.get_agent_card()
+    print(f"[A2A] Delegating to {card.name}: {question!r}", flush=True)
 
     # Closing the httpx client closes the A2A connection, too.
     async with httpx.AsyncClient(timeout=httpx.Timeout(120.0)) as a2a_http:
         config = ClientConfig(streaming=True, httpx_client=a2a_http)
-        client = await ClientFactory.connect(card, client_config=config)
-        message = create_text_message_object(content=question)
+        client = await create_client(card, client_config=config)
+        request = SendMessageRequest(message=new_text_message(question, role=Role.ROLE_USER))
         response_text = ""
         event_count = 0
-        async for event in client.send_message(message):
+        async for event in client.send_message(request):
             event_count += 1
-            if isinstance(event, A2AMessage):
-                response_text = get_message_text(event)
-            else:
-                task, _ = event
-                if task.status and task.status.message:
-                    response_text = get_message_text(task.status.message)
+            # Every status update carries the whole answer so far. Skip events without text.
+            if text := get_stream_response_text(event):
+                response_text = text
         print(
-            f"[A2A] Response from {agent_name} ({event_count} SSE events, {len(response_text)} chars)",
+            f"[A2A] Response from {card.name} ({event_count} SSE events, {len(response_text)} chars)",
             flush=True,
         )
         return response_text or "(Agent returned no response)"
@@ -97,9 +83,7 @@ def _build_tools(cards: list[AgentCard]) -> list[StructuredTool]:
     metadata for the tool name, description, and routing."""
     tools = []
     for card in cards:
-        url = card.url.rstrip("/")
         name = _make_tool_name(card.name)
-        agent_name = card.name
 
         # Build tool description from the card's skills
         skill_lines = []
@@ -116,8 +100,8 @@ def _build_tools(cards: list[AgentCard]) -> list[StructuredTool]:
         )
 
         # Create an async function that delegates to this agent
-        async def _call(question: str, _url=url, _name=agent_name) -> str:
-            return await _delegate(_url, _name, question)
+        async def _call(question: str, _card=card) -> str:
+            return await _delegate(_card, question)
 
         tool = StructuredTool.from_function(
             coroutine=_call,
