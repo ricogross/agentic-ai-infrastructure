@@ -58,7 +58,10 @@ def describe_table(table_name: str) -> str:
     """
     conn = _get_connection()
     try:
-        rows = conn.execute(f"PRAGMA table_info('{table_name}')").fetchall()
+        # The table name is a bound parameter, so it can't change the statement itself.
+        rows = conn.execute(
+            'SELECT name, type, "notnull", pk FROM pragma_table_info(?)', (table_name,)
+        ).fetchall()
         if not rows:
             raise ToolError(f"table {table_name!r} not found or has no columns")
         lines = [f"{'Column':<20} {'Type':<15} {'Nullable':<10} {'PK':<5}"]
