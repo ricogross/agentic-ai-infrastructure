@@ -1,6 +1,7 @@
-# Runs the project's pre-commit hooks on every pull request and on pushes to main.
-# Nothing tool-specific is pinned here: the hooks and their versions come from
-# .pre-commit-config.yaml, the pre-commit and pytest versions from uv.lock.
+# Runs the project's pre-commit hooks and builds the frontend on every pull request
+# and on pushes to main. Apart from the Node.js major version, nothing tool-specific
+# is pinned here: the hooks and their versions come from .pre-commit-config.yaml, the
+# pre-commit and pytest versions from uv.lock, pnpm from frontend/package.json.
 # A tests job joins once there are tests.
 name: checks
 
@@ -28,3 +29,28 @@ jobs:
       # --all-files: check the whole repo; nothing is staged in CI.
       # --show-diff-on-failure: print what a fixing hook changed, so the log shows why.
       - run: uv run --locked pre-commit run --all-files --show-diff-on-failure
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: 24
+      # Installs the pnpm version from packageManager in frontend/package.json and
+      # caches its package store, keyed by the lockfile.
+      - uses: pnpm/action-setup@v6.1.1
+        with:
+          package_json_file: frontend/package.json
+          cache: true
+          cache_dependency_path: frontend/pnpm-lock.yaml
+      # --frozen-lockfile: fail if pnpm-lock.yaml does not match the package.json
+      #   files, instead of quietly resolving the dependencies anew.
+      - run: pnpm install --frozen-lockfile
+      # ESLint with the Next.js rules from eslint.config.mjs.
+      - run: pnpm lint
+      # next build: compiles the app and type-checks it with TypeScript.
+      - run: pnpm build
