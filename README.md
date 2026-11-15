@@ -80,7 +80,7 @@ A multi-agent system demonstrating three open agentic protocols working together
 
 - [uv](https://docs.astral.sh/uv/) (installs Python 3.14 automatically)
 - Node.js 24+
-- pnpm (`npm install -g pnpm@9`)
+- pnpm 11 or newer (`npm install -g pnpm@12`); the project pins its exact version in `frontend/package.json`, and pnpm switches to it by itself
 - OpenAI API key
 
 ## Initial Setup
