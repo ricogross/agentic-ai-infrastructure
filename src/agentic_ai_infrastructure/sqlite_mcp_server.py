@@ -1,4 +1,5 @@
 import sqlite3
+import time
 
 from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
@@ -11,6 +12,10 @@ DB_PATH = PROJECT_ROOT / "demo.db"
 # statement, so this also stops ATTACH and VACUUM INTO, which write files even on a read-only
 # connection.
 READ_ACTIONS = {sqlite3.SQLITE_SELECT, sqlite3.SQLITE_READ, sqlite3.SQLITE_FUNCTION}
+
+# A query that only reads can still run for hours, e.g. a cross join of many tables. While it
+# runs, this server answers no other tool call, so `query` stops it after this many seconds.
+QUERY_TIME_LIMIT = 10
 
 mcp = FastMCP(
     name="sqlite-explorer",
@@ -31,6 +36,12 @@ def _get_connection() -> sqlite3.Connection:
 
 def _allow_only_reads(action: int, *_: str | None) -> int:
     return sqlite3.SQLITE_OK if action in READ_ACTIONS else sqlite3.SQLITE_DENY
+
+
+def _stop_after(seconds: float):
+    # SQLite calls this while a query runs; a true result interrupts the query.
+    deadline = time.monotonic() + seconds
+    return lambda: time.monotonic() > deadline
 
 
 @mcp.tool()
@@ -88,6 +99,7 @@ def query(sql: str) -> str:
     """
     conn = _get_connection()
     conn.set_authorizer(_allow_only_reads)
+    conn.set_progress_handler(_stop_after(QUERY_TIME_LIMIT), 10_000)  # every 10,000 steps
     try:
         cursor = conn.execute(sql)
         rows = cursor.fetchall()
@@ -113,6 +125,8 @@ def query(sql: str) -> str:
     except sqlite3.Error as e:
         if e.sqlite_errorname == "SQLITE_AUTH":
             raise ToolError("only read-only queries are allowed (SELECT, WITH ... SELECT)") from e
+        if e.sqlite_errorname == "SQLITE_INTERRUPT":
+            raise ToolError(f"query took longer than {QUERY_TIME_LIMIT} s and was stopped") from e
         raise ToolError(f"SQL error: {e}") from e
     finally:
         conn.close()
