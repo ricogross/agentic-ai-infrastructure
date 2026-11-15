@@ -1,17 +1,14 @@
 from a2a.types import AgentSkill
-from dotenv import load_dotenv
 from mcp import StdioServerParameters
 
-from agentic_ai_infrastructure import PROJECT_ROOT
+from agentic_ai_infrastructure import PROJECT_ROOT, config
 from agentic_ai_infrastructure.a2a_mcp_agent import McpAgentExecutor, build_agent_card, serve
-
-load_dotenv()
 
 SANDBOX_DIR = str(PROJECT_ROOT / "sandbox")
 # Pinned: without a version, `npx -y` runs whatever npm published last, on every start.
 FILESYSTEM_SERVER = "@modelcontextprotocol/server-filesystem@2.3.0"
 
-PORT = 5002
+PORT = config.FILESYSTEM_AGENT_PORT
 
 SYSTEM_PROMPT = f"""\
 You are a filesystem assistant specialized in browsing and reading files \

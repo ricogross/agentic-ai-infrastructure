@@ -2,7 +2,7 @@
 Orchestrator LangGraph Agent.
 
 On startup, discovers all A2A sub-agents by fetching their Agent Cards.
-The sub-agents are registered through the AGENT_URLS config variable.
+The sub-agents are registered through the AGENT_URLS setting (see config.py).
 Dynamically generates LangChain tools and routing instructions from
 the discovered skills.
 
@@ -15,26 +15,17 @@ import httpx
 from a2a.client import A2ACardResolver, A2AClientError, ClientConfig, create_client
 from a2a.helpers import get_stream_response_text, new_text_message
 from a2a.types import AgentCard, Role, SendMessageRequest
-from dotenv import load_dotenv
 from langchain.agents import create_agent
 from langchain_core.tools import StructuredTool
 
-load_dotenv()
-
-
-AGENT_URLS = [
-    "http://localhost:5001",
-    "http://localhost:5002",
-]
-
-MODEL = "openai:gpt-4o-mini"
+from agentic_ai_infrastructure import config
 
 
 async def _discover_agents() -> list[AgentCard]:
     """Fetch Agent Cards from all known agent URLs."""
     cards: list[AgentCard] = []
     async with httpx.AsyncClient(timeout=httpx.Timeout(20.0)) as http_client:
-        for url in AGENT_URLS:
+        for url in config.AGENT_URLS:
             try:
                 resolver = A2ACardResolver(httpx_client=http_client, base_url=url)
                 card = await resolver.get_agent_card()
@@ -160,4 +151,4 @@ _system_prompt = _build_system_prompt(_cards)
 
 print(f"[A2A] System prompt:\n{_system_prompt}\n", flush=True)
 
-graph = create_agent(MODEL, _tools, system_prompt=_system_prompt)
+graph = create_agent(config.MODEL, _tools, system_prompt=_system_prompt)
