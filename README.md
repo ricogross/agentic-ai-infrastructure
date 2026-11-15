@@ -89,8 +89,8 @@ A multi-agent system demonstrating three open agentic protocols working together
 # 1. Set up the Python backend (creates .venv from uv.lock)
 uv sync
 
-# 2. Create a .env file in the project root containing your OpenAI API key:
-OPENAI_API_KEY=sk-proj-...
+# 2. Create your .env from the template, then set OPENAI_API_KEY in it
+cp .env.example .env
 
 # 3. Seed the sample database
 uv run seed-db
@@ -122,6 +122,19 @@ pnpm dev
 Then open http://localhost:3000 in your browser.
 There the chat UI is hosted.
 
+## Configuration
+
+Every setting has a default for running the whole system on one machine. The Python services read them from environment variables or from `.env` (template: `.env.example`, loaded by `config.py`); environment variables win.
+
+| Setting | Default | Used by |
+|---------|---------|---------|
+| `OPENAI_API_KEY` | none, required | every LLM call |
+| `MODEL` | `openai:gpt-4o-mini` | orchestrator and both agents, as `provider:model` for LangChain. Other providers need their LangChain package, e.g. `uv add langchain-anthropic` |
+| `DATABASE_AGENT_PORT` | `5001` | Database Agent |
+| `FILESYSTEM_AGENT_PORT` | `5002` | Filesystem Agent |
+| `AGENT_URLS` | the two agents on `localhost` | orchestrator, comma-separated list of agents to discover |
+| `LANGGRAPH_DEPLOYMENT_URL` | `http://localhost:8123` | frontend, to reach the orchestrator. It is not read from `.env`: set it in the shell before `pnpm dev` or in `frontend/apps/app/.env.local`. It has to match the `--port` of `langgraph dev` |
+
 ## Development
 
 Ruff (lint and format) and ty (type checks) are dev dependencies and come with `uv sync`:
@@ -147,11 +160,13 @@ CI (`.github/workflows/checks.yaml`) runs the same hooks on every pull request, 
 |------|---------|
 | `src/agentic_ai_infrastructure/` | Python package with all backend code (`PROJECT_ROOT` in `__init__.py`) |
 | `src/agentic_ai_infrastructure/orchestrator_agent.py` | LangGraph orchestrator agent — routes requests to specialized agents over A2A or answers them directly |
+| `src/agentic_ai_infrastructure/config.py` | Settings from environment variables and `.env` (see Configuration) |
 | `src/agentic_ai_infrastructure/a2a_mcp_agent.py` | Shared A2A server for both agents: executor, Agent Card and startup |
 | `src/agentic_ai_infrastructure/a2a_database_agent.py` | A2A server wrapping a LangChain database agent (port 5001) |
 | `src/agentic_ai_infrastructure/a2a_filesystem_agent.py` | A2A server wrapping a LangChain filesystem agent (port 5002) |
 | `src/agentic_ai_infrastructure/sqlite_mcp_server.py` | Custom MCP server exposing SQLite tools |
 | `src/agentic_ai_infrastructure/seed_db.py` | Seeds `demo.db` with sample products and orders |
+| `.env.example` | Template for `.env`: the OpenAI API key and all optional settings |
 | `langgraph.json` | LangGraph server config — points to the orchestrator graph |
 | `sandbox/` | Sample files for the filesystem agent |
 | `frontend/` | CopilotKit + Next.js app (scaffolded via `npx create-ag-ui-app`) |
@@ -208,7 +223,7 @@ This file is structured like `a2a_database_agent.py`. The only differences are w
 
 The **Orchestrator Agent** is the central agent that talks to the user and delegates requests to specialized agents. Unlike the upper two agents, it does not utilize MCP at all. Its "tools" are A2A calls to the other agents. The **Orchestrator Agent** has no prior knowledge of **Database AI Agent** or **Filesystem AI Agent** - it discovers them through their Agent Cards and creates LangChain tools out of the information found there. Then, when a user request comes in, it delegates a task to one of the specialized agents if their capabilities are helpful for handling the request.
 
-- `AGENT_URLS` is the only thing the orchestrator "knows" upfront — where to look for agents. It doesn't know what they do, what they're called, or what questions to send them. All of that comes from the Agent Cards.
+- The `AGENT_URLS` setting is the only thing the orchestrator "knows" upfront — where to look for agents. It doesn't know what they do, what they're called, or what questions to send them. All of that comes from the Agent Cards.
 - `_discover_agents()` is called on startup. Iterates over `AGENT_URLS` and fetches each agent's card at GET `{url}/.well-known/agent-card.json`. Returns a list of AgentCard objects containing everything the agent advertised — its name, description, skills, tags, examples. If an agent is unreachable, it prints a warning and skips it. The **Orchestrator Agent** still starts — it just won't have a tool for that agent.
 - `_delegate()` implements the full A2A client flow - connects with the agent for streaming, sends a message, collects the response from SSE events. `create_client()` takes the `Agent Card` from the discovery and creates an A2A client configured for that agent.
 - `_make_tool_name(agent_name: str)` converts the agent's name from the card into a valid LangChain tool name. "Database Agent" becomes `ask_database_agent`, "Filesystem Agent" becomes `ask_filesystem_agent`. If someone adds a "Weather Agent", it would automatically become `ask_weather_agent`.

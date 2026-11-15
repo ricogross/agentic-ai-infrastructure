@@ -1,14 +1,12 @@
 import sys
 
 from a2a.types import AgentSkill
-from dotenv import load_dotenv
 from mcp import StdioServerParameters
 
+from agentic_ai_infrastructure import config
 from agentic_ai_infrastructure.a2a_mcp_agent import McpAgentExecutor, build_agent_card, serve
 
-load_dotenv()
-
-PORT = 5001
+PORT = config.DATABASE_AGENT_PORT
 
 SYSTEM_PROMPT = """\
 You are a database assistant specialized in exploring and querying a SQLite \

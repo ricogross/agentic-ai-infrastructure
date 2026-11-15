@@ -3,7 +3,11 @@
     "tasks": {
         "dev": {
             "cache": false,
-            "persistent": true
+            "persistent": true,
+            "passThroughEnv": [
+                "LANGGRAPH_DEPLOYMENT_URL",
+                "LANGSMITH_API_KEY"
+            ]
         },
         "build": {
             "dependsOn": [

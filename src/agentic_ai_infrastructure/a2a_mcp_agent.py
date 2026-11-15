@@ -31,9 +31,7 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from starlette.applications import Starlette
 
-from agentic_ai_infrastructure import PROJECT_ROOT
-
-MODEL = "openai:gpt-4o-mini"
+from agentic_ai_infrastructure import PROJECT_ROOT, config
 
 
 class McpAgentExecutor(AgentExecutor):
@@ -43,7 +41,7 @@ class McpAgentExecutor(AgentExecutor):
         self,
         mcp_servers: dict[str, StdioServerParameters],
         system_prompt: str,
-        model: str | BaseChatModel = MODEL,
+        model: str | BaseChatModel = config.MODEL,
     ):
         self._mcp_servers = mcp_servers
         self._system_prompt = system_prompt
