@@ -1,2 +1,7 @@
 packages:
   - "apps/app"
+
+# Since pnpm 10, dependencies may only run build scripts that are listed here.
+allowBuilds:
+  # Pulled in by CopilotKit; its postinstall only reports the installation to Scarf.
+  "@scarf/scarf": false

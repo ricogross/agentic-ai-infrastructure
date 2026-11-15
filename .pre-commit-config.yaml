@@ -13,6 +13,8 @@ repos:
       - id: check-added-large-files
         args: [--maxkb=512]
       - id: check-yaml
+        # pnpm-lock.yaml holds two documents since pnpm 11 (pnpm itself, then the packages).
+        args: [--allow-multiple-documents]
       - id: check-toml
       - id: pretty-format-json
         args: [--autofix, --indent=4, --no-sort-keys]
