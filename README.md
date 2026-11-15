@@ -147,6 +147,7 @@ CI (`.github/workflows/checks.yaml`) runs the same hooks on every pull request, 
 |------|---------|
 | `src/agentic_ai_infrastructure/` | Python package with all backend code (`PROJECT_ROOT` in `__init__.py`) |
 | `src/agentic_ai_infrastructure/orchestrator_agent.py` | LangGraph orchestrator agent — routes requests to specialized agents over A2A or answers them directly |
+| `src/agentic_ai_infrastructure/a2a_mcp_agent.py` | Shared A2A server for both agents: executor, Agent Card and startup |
 | `src/agentic_ai_infrastructure/a2a_database_agent.py` | A2A server wrapping a LangChain database agent (port 5001) |
 | `src/agentic_ai_infrastructure/a2a_filesystem_agent.py` | A2A server wrapping a LangChain filesystem agent (port 5002) |
 | `src/agentic_ai_infrastructure/sqlite_mcp_server.py` | Custom MCP server exposing SQLite tools |
@@ -173,30 +174,35 @@ CI (`.github/workflows/checks.yaml`) runs the same hooks on every pull request, 
 - The database is opened read-only (`mode=ro`), and `query` additionally installs a SQLite *authorizer* that only permits reading. That way SQLite itself rejects writes, `PRAGMA`, `ATTACH` and `VACUUM INTO`, instead of a check on the beginning of the SQL text.
 - Key insight: This file is purely an MCP server — it knows nothing about A2A, LangChain or the frontend. It is a self-contained tool provider. The `@mcp.tool()` decorator is the entire MCP integration — everything else is just SQLite logic. That is the point of MCP: tool authors write normal functions, the protocol handles the rest.
 
-### Database AI Agent (a2a_database_agent.py)
+### Shared A2A agent server (a2a_mcp_agent.py)
 
-- This file sits at the intersection of two protocols. From the outside, it is an A2A server — it speaks JSON-RPC, serves an `Agent Card`, receives questions over A2A from the **Orchestrator Agent** and streams responses via SSE. From the inside, it is an MCP client — it spawns **SQLite MCP server** to answer requests by calling its tools and uses an LLM to reason about the results. The LangChain ReAct agent is the glue between the two. Essentially, the MCP-client + Agent are wrapped inside of a A2A-compliant server.
-- The `SYSTEM_PROMPT` instructs the LLM on how to behave during the conversation.
-- `AgentExecutor` is the A2A SDKs abstract base class.
+- This file sits at the intersection of two protocols. From the outside, an agent built from it is an A2A server — it speaks JSON-RPC, serves an `Agent Card`, receives questions over A2A from the **Orchestrator Agent** and streams responses via SSE. From the inside, it is an MCP client — it spawns MCP servers to answer requests by calling their tools and uses an LLM to reason about the results. The LangChain ReAct agent is the glue between the two. Both specialized agents are built from this file and only define what differs: their MCP servers, their system prompt and their skill.
+- `AgentExecutor` is the A2A SDKs abstract base class. `McpAgentExecutor` implements it for a given set of MCP servers (`mcp_servers`), a `system_prompt` and a `model`.
 - `_get_agent()` creates the LangChain agent on the first request and returns it on every later one. This is also where A2A and MCP connect:
-  - `MultiServerMCPClient` configures the `SQLite MCP Server` connection.
-  - When `get_tools()` is called, it spawns the SQLite MCP server (`python -m agentic_ai_infrastructure.sqlite_mcp_server`) as a subprocess, sends a `ListToolsRequest` over stdio, and gets back all the available tools of the MCP server.
+  - `MultiServerMCPClient` configures the connections to the agent's MCP servers.
+  - When `get_tools()` is called, it spawns the MCP servers as subprocesses, sends a `ListToolsRequest` over stdio, and gets back all the available tools of the MCP servers.
   - `handle_tool_error = True` ensures tool errors are returned to the LLM as text rather than crashing the agent.
   - `create_agent()` builds the AI agent — an LLM that can reason about which tools to call, call them, observe the results and iterate until it has an answer.
 - To properly utilize the `AgentExecutor` base class, the `execute()` method is implemented and the A2A framework calls it whenever a message arrives (`context` contains the incoming A2A message (the question from the **Orchestrator Agent**); `event_queue` is used to push events back to the caller (`TaskUpdater` is a convenience wrapper around the event queue)). Since A2A 1.0, the events of a task have to start with the task itself, so `execute()` creates it first (`new_task_from_user_message()`). This is the core — an A2A request comes in, the LLM reasons and calls MCP tools and the response streams back over A2A.
-- `AgentSkill` defines what this agent can do. The `examples` help other agents (or humans) understand what kind of questions to send. This becomes part of the `Agent Card`.
-- The `Agent Card` is the A2A discovery mechanism. It is served at `/.well-known/agent-card.json` and tells any A2A client: here is who I am, what I can do, where to reach me and that I support streaming. The **Orchestrator Agent** fetches this before sending any messages.
-- Inside of `main()` the overall setup is done:
-  - `DefaultRequestHandler` routes incoming A2A JSON-RPC requests to `DatabaseAgentExecutor`.
+- `build_agent_card()` builds the `Agent Card`, the A2A discovery mechanism. It is served at `/.well-known/agent-card.json` and tells any A2A client: here is who I am, what I can do, where to reach me and that I support streaming. The **Orchestrator Agent** fetches this before sending any messages.
+- `serve()` does the overall setup:
+  - `DefaultRequestHandler` routes incoming A2A JSON-RPC requests to the executor.
   - `create_agent_card_routes()` and `create_jsonrpc_routes()` create the routes that serve the `Agent Card` and handle the `SendMessage` and `SendStreamingMessage` JSON-RPC methods. `Starlette` combines them into an ASGI app.
   - `uvicorn` then serves this app as an HTTP server.
 
+### Database AI Agent (a2a_database_agent.py)
+
+- The `SYSTEM_PROMPT` instructs the LLM on how to behave during the conversation.
+- `MCP_SERVERS` configures a single MCP server: the **SQLite MCP server**, started as `python -m agentic_ai_infrastructure.sqlite_mcp_server`.
+- `AgentSkill` defines what this agent can do. The `examples` help other agents (or humans) understand what kind of questions to send. `build_agent_card()` puts it into the `Agent Card`.
+- `main()` hands the `Agent Card` and a `McpAgentExecutor` with these settings to `serve()`.
+
 ### Filesystem AI Agent (a2a_filesystem_agent.py)
 
-This file is structurally identical to `a2a_database_agent.py`. The only differences are what MCP server it connects to and what it is specialized in. Only the key differences will be explained below:
+This file is structured like `a2a_database_agent.py`. The only differences are what MCP server it connects to and what it is specialized in:
 
 - Instead of a database path, this agent knows about a directory. The `SANDBOX_DIR` is embedded into the system prompt so the LLM knows the boundaries of what it can access.
-- Here, `MultiServerMCPClient` configures a connection to the prebuilt `Filesystem MCP Server`. Instead of spawning our own `sqlite_mcp_server.py`, it runs a `npx` command to spawn the prebuilt server `@modelcontextprotocol/server-filesystem`. Its version is pinned in `FILESYSTEM_SERVER`, so every start runs the same server. `--read-only` makes the server offer only its reading tools, so the agent can browse and read the sandbox but not change it, as its Agent Card says.
+- Here, `MCP_SERVERS` configures a connection to the prebuilt `Filesystem MCP Server`. Instead of spawning our own `sqlite_mcp_server.py`, it runs a `npx` command to spawn the prebuilt server `@modelcontextprotocol/server-filesystem`. Its version is pinned in `FILESYSTEM_SERVER`, so every start runs the same server. `--read-only` makes the server offer only its reading tools, so the agent can browse and read the sandbox but not change it, as its Agent Card says.
 
 ### Orchestrator AI Agent (orchestrator_agent.py)
 
