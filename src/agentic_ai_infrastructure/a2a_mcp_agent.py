@@ -4,6 +4,9 @@ Specialized agents are built from this module. They only differ in their MCP ser
 their system prompt and what their Agent Card advertises.
 """
 
+import contextlib
+from collections.abc import AsyncGenerator
+
 import uvicorn
 from a2a.helpers import new_task_from_user_message
 from a2a.server.agent_execution import AgentExecutor, RequestContext
@@ -22,9 +25,13 @@ from a2a.types import (
 from langchain.agents import create_agent
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, ToolMessage
-from langchain_mcp_adapters.client import MultiServerMCPClient
-from langchain_mcp_adapters.sessions import Connection
+from langchain_core.tools import BaseTool
+from langchain_mcp_adapters.tools import load_mcp_tools
+from mcp import ClientSession, StdioServerParameters
+from mcp.client.stdio import stdio_client
 from starlette.applications import Starlette
+
+from agentic_ai_infrastructure import PROJECT_ROOT
 
 MODEL = "openai:gpt-4o-mini"
 
@@ -34,7 +41,7 @@ class McpAgentExecutor(AgentExecutor):
 
     def __init__(
         self,
-        mcp_servers: dict[str, Connection],
+        mcp_servers: dict[str, StdioServerParameters],
         system_prompt: str,
         model: str | BaseChatModel = MODEL,
     ):
@@ -42,21 +49,38 @@ class McpAgentExecutor(AgentExecutor):
         self._system_prompt = system_prompt
         self._model = model
         self._agent = None
-        self._client = None
 
-    async def _get_agent(self):
-        if self._agent is None:
-            self._client = MultiServerMCPClient(self._mcp_servers)
-            tools = await self._client.get_tools()
+    @contextlib.asynccontextmanager
+    async def connected(self) -> AsyncGenerator[None]:
+        """Start the MCP servers, keep one session to each open and build the agent."""
+        async with contextlib.AsyncExitStack() as stack:
+            tools: list[BaseTool] = []
+            for name, server in self._mcp_servers.items():
+                # The server's stderr goes to a log file, not to this process's stderr: on
+                # Windows the server runs without a console (CREATE_NO_WINDOW), and a Node-based
+                # server dies when it writes to the console of this process ("McpError:
+                # Connection closed"). The file is opened once while the app starts, before
+                # any request (so the blocking open() is harmless), and closed by the stack.
+                log_path = PROJECT_ROOT / f"{name}_mcp_server.log"
+                errlog = stack.enter_context(open(log_path, "a", encoding="utf-8"))  # noqa: ASYNC230, SIM115
+                read, write = await stack.enter_async_context(stdio_client(server, errlog=errlog))
+                session = await stack.enter_async_context(ClientSession(read, write))
+                await session.initialize()
+                tools += await load_mcp_tools(session)
             for tool in tools:
                 tool.handle_tool_error = True
             self._agent = create_agent(self._model, tools, system_prompt=self._system_prompt)
-        return self._agent
+            try:
+                yield
+            finally:
+                self._agent = None
 
     async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
         if context.message is None:
             raise ValueError("A2A request without a message")
-        agent = await self._get_agent()
+        if self._agent is None:
+            raise RuntimeError("MCP servers not connected, see McpAgentExecutor.connected()")
+        agent = self._agent
         # A2A 1.0: the event stream of a task has to start with the task itself.
         task = context.current_task
         if task is None:
@@ -122,7 +146,7 @@ def build_agent_card(name: str, description: str, skill: AgentSkill, port: int) 
     )
 
 
-def serve(agent_card: AgentCard, executor: AgentExecutor, port: int) -> None:
+def serve(agent_card: AgentCard, executor: McpAgentExecutor, port: int) -> None:
     """Serve the Agent Card and the A2A JSON-RPC endpoint on localhost at `port`."""
     handler = DefaultRequestHandler(
         agent_executor=executor,
@@ -130,7 +154,10 @@ def serve(agent_card: AgentCard, executor: AgentExecutor, port: int) -> None:
         agent_card=agent_card,
     )
     app = Starlette(
-        routes=create_agent_card_routes(agent_card) + create_jsonrpc_routes(handler, rpc_url="/")
+        routes=create_agent_card_routes(agent_card) + create_jsonrpc_routes(handler, rpc_url="/"),
+        # The MCP servers live as long as the app: they start before the first request is
+        # accepted and stop when uvicorn shuts down.
+        lifespan=lambda _app: executor.connected(),
     )
     print(f"{agent_card.name} (A2A) starting on http://localhost:{port}")
     print(f"Agent Card: http://localhost:{port}/.well-known/agent-card.json")
