@@ -11,7 +11,12 @@ DB_PATH = PROJECT_ROOT / "demo.db"
 # The actions a statement in `query` may perform. SQLite's authorizer checks every action of a
 # statement, so this also stops ATTACH and VACUUM INTO, which write files even on a read-only
 # connection.
-READ_ACTIONS = {sqlite3.SQLITE_SELECT, sqlite3.SQLITE_READ, sqlite3.SQLITE_FUNCTION}
+READ_ACTIONS = {
+    sqlite3.SQLITE_SELECT,
+    sqlite3.SQLITE_READ,
+    sqlite3.SQLITE_FUNCTION,
+    sqlite3.SQLITE_RECURSIVE,  # WITH RECURSIVE; QUERY_TIME_LIMIT stops one that never ends
+}
 
 # A query that only reads can still run for hours, e.g. a cross join of many tables. While it
 # runs, this server answers no other tool call, so `query` stops it after this many seconds.
@@ -92,7 +97,8 @@ def describe_table(table_name: str) -> str:
 def query(sql: str) -> str:
     """Execute a read-only SQL query against the database and return results.
 
-    Only statements that read data are allowed, e.g. SELECT or WITH ... SELECT.
+    Only statements that read data are allowed, e.g. SELECT, WITH ... SELECT or
+    WITH RECURSIVE ... SELECT.
 
     Args:
         sql: The SQL query to execute.
