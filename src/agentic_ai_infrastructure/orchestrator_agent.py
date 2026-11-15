@@ -1,14 +1,13 @@
 """
 Orchestrator LangGraph Agent.
 
-On startup, discovers all A2A sub-agents by fetching their Agent Cards.
+On first use, discovers all A2A sub-agents by fetching their Agent Cards.
 The sub-agents are registered through the AGENT_URLS setting (see config.py).
 Dynamically generates LangChain tools and routing instructions from
 the discovered skills.
 
 """
 
-import asyncio
 import re
 
 import httpx
@@ -137,18 +136,32 @@ def _build_system_prompt(cards: list[AgentCard]) -> str:
     )
 
 
-print("[A2A] Discovering agents...", flush=True)
-_cards = asyncio.run(_discover_agents())
+# The graph, once every agent in AGENT_URLS has answered. Until then, make_graph() builds a
+# new one on every call.
+_graph = None
 
-if not _cards:
-    print(
-        "[A2A] WARNING: No agents discovered. The orchestrator will have no tools.",
-        flush=True,
-    )
 
-_tools = _build_tools(_cards)
-_system_prompt = _build_system_prompt(_cards)
+async def make_graph():
+    """Build the orchestrator graph; `langgraph dev` calls this whenever it needs the graph.
 
-print(f"[A2A] System prompt:\n{_system_prompt}\n", flush=True)
+    The agents are discovered here, on first use instead of at import, so the agents and
+    `langgraph dev` can start in any order. Once every agent in AGENT_URLS has answered, the
+    graph is kept. Until then, every call looks for the missing agents again.
+    """
+    global _graph
+    if _graph is not None:
+        return _graph
 
-graph = create_agent(config.MODEL, _tools, system_prompt=_system_prompt)
+    print("[A2A] Discovering agents...", flush=True)
+    cards = await _discover_agents()
+    tools = _build_tools(cards)
+    system_prompt = _build_system_prompt(cards)
+    print(f"[A2A] System prompt:\n{system_prompt}\n", flush=True)
+    graph = create_agent(config.MODEL, tools, system_prompt=system_prompt)
+
+    missing = len(config.AGENT_URLS) - len(cards)
+    if missing == 0:
+        _graph = graph
+    else:
+        print(f"[A2A] {missing} agent(s) not reachable yet, looking again next time.", flush=True)
+    return graph

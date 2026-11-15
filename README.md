@@ -102,7 +102,7 @@ pnpm install
 
 ## Running the Agentic AI system
 
-Start each service in its own terminal in the following order:
+Start each service in its own terminal, in any order:
 
 ```bash
 # Terminal 1 — Database Agent
@@ -224,14 +224,14 @@ This file is structured like `a2a_database_agent.py`. The only differences are w
 The **Orchestrator Agent** is the central agent that talks to the user and delegates requests to specialized agents. Unlike the upper two agents, it does not utilize MCP at all. Its "tools" are A2A calls to the other agents. The **Orchestrator Agent** has no prior knowledge of **Database AI Agent** or **Filesystem AI Agent** - it discovers them through their Agent Cards and creates LangChain tools out of the information found there. Then, when a user request comes in, it delegates a task to one of the specialized agents if their capabilities are helpful for handling the request.
 
 - The `AGENT_URLS` setting is the only thing the orchestrator "knows" upfront — where to look for agents. It doesn't know what they do, what they're called, or what questions to send them. All of that comes from the Agent Cards.
-- `_discover_agents()` is called on startup. Iterates over `AGENT_URLS` and fetches each agent's card at GET `{url}/.well-known/agent-card.json`. Returns a list of AgentCard objects containing everything the agent advertised — its name, description, skills, tags, examples. If an agent is unreachable, it prints a warning and skips it. The **Orchestrator Agent** still starts — it just won't have a tool for that agent.
+- `_discover_agents()` is called by `make_graph()`. Iterates over `AGENT_URLS` and fetches each agent's card at GET `{url}/.well-known/agent-card.json`. Returns a list of AgentCard objects containing everything the agent advertised — its name, description, skills, tags, examples. If an agent is unreachable, it prints a warning and skips it. The **Orchestrator Agent** still works — it just won't have a tool for that agent until the agent is reachable.
 - `_delegate()` implements the full A2A client flow - connects with the agent for streaming, sends a message, collects the response from SSE events. `create_client()` takes the `Agent Card` from the discovery and creates an A2A client configured for that agent.
 - `_make_tool_name(agent_name: str)` converts the agent's name from the card into a valid LangChain tool name. "Database Agent" becomes `ask_database_agent`, "Filesystem Agent" becomes `ask_filesystem_agent`. If someone adds a "Weather Agent", it would automatically become `ask_weather_agent`.
 - `_build_tools(cards: list[AgentCard])` dynamically creates LangChain tools. The tool `description` — what the LLM reads when deciding which tool to call — is built entirely from the Agent Card's skills, descriptions, and examples. The LLM's routing knowledge comes from the agents themselves, not from manually written docstrings. `StructuredTool.from_function` creates a LangChain tool from a regular function — same as what `@tool` does, but programmatically so we can set the name and description from variables.
 - `_build_system_prompt(cards: list[AgentCard])` pulls the tags (like database, sql, sqlite, query, schema) and examples (like "What tables are in the database?") from each agent's skills and compiles them into routing rules. The LLM sees this and knows how to route — but none of it manually written upfront. It all comes from the Agent Cards.
 - The `SYSTEM_PROMPT` configures the routing logic. It is not hardcoded if/else branching — the LLM reads these rules and decides at runtime which tool to call (or none).
-- `_cards = asyncio.run(_discover_agents())`  runs the async discovery synchronously at module import time. This happens once when `langgraph dev` loads the module. The agents must be running before the orchestrator starts — otherwise they won't be discovered.
-- `create_agent()` builds an AI agent that loops between LLM reasoning and tool execution. The graph variable is referenced in `langgraph.json`. This graph variable is what `langgraph dev` imports and serves. This command loads this module, finds the graph object, wraps it in an HTTP API (threads, runs, streaming) and serves it on port 8123. The frontend's CopilotKit connects to that API.
+- `make_graph()` is a *graph factory*: `langgraph.json` points to it, and `langgraph dev` calls it whenever it needs the graph. It discovers the agents, builds the tools and the system prompt from their cards, and `create_agent()` builds an AI agent that loops between LLM reasoning and tool execution. Because the discovery happens on first use instead of when the module is imported, the agents and `langgraph dev` can start in any order. Once every agent in `AGENT_URLS` has answered, the graph is kept; until then, every call looks for the missing agents again.
+- `langgraph dev` wraps the graph in an HTTP API (threads, runs, streaming) and serves it on port 8123. The frontend's CopilotKit connects to that API.
 
 ### React Frontend (frontend/)
 
