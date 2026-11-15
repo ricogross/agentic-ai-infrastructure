@@ -1,9 +1,6 @@
-import functools
-
-import langchain_mcp_adapters.sessions
 from a2a.types import AgentSkill
 from dotenv import load_dotenv
-from langchain_mcp_adapters.sessions import Connection
+from mcp import StdioServerParameters
 
 from agentic_ai_infrastructure import PROJECT_ROOT
 from agentic_ai_infrastructure.a2a_mcp_agent import McpAgentExecutor, build_agent_card, serve
@@ -13,17 +10,6 @@ load_dotenv()
 SANDBOX_DIR = str(PROJECT_ROOT / "sandbox")
 # Pinned: without a version, `npx -y` runs whatever npm published last, on every start.
 FILESYSTEM_SERVER = "@modelcontextprotocol/server-filesystem@2.3.0"
-
-# Workaround: the MCP client starts the server without a console (CREATE_NO_WINDOW on
-# Windows) but hands it this process's stderr. If that stderr is a real console, the
-# Node-based filesystem server dies on its first log write ("McpError: Connection
-# closed"). langchain-mcp-adapters has no option for the server's stderr, so send it
-# to a log file instead.
-SERVER_LOG = open(PROJECT_ROOT / "filesystem_mcp_server.log", "a", encoding="utf-8")  # noqa: SIM115
-# partial() makes errlog keyword-only; the adapter only ever passes the server parameters.
-langchain_mcp_adapters.sessions.stdio_client = functools.partial(  # ty: ignore[invalid-assignment]
-    langchain_mcp_adapters.sessions.stdio_client, errlog=SERVER_LOG
-)
 
 PORT = 5002
 
@@ -42,18 +28,17 @@ Your workflow:
 You can ONLY access files inside the sandbox directory.
 """
 
-MCP_SERVERS: dict[str, Connection] = {
-    "filesystem": {
-        "command": "npx",
-        "args": [
+MCP_SERVERS = {
+    "filesystem": StdioServerParameters(
+        command="npx",
+        args=[
             "-y",
             FILESYSTEM_SERVER,
             # Serve only the tools that read, e.g. no write_file or move_file.
             "--read-only",
             SANDBOX_DIR,
         ],
-        "transport": "stdio",
-    },
+    ),
 }
 
 skill = AgentSkill(

@@ -2,7 +2,7 @@ import sys
 
 from a2a.types import AgentSkill
 from dotenv import load_dotenv
-from langchain_mcp_adapters.sessions import Connection
+from mcp import StdioServerParameters
 
 from agentic_ai_infrastructure.a2a_mcp_agent import McpAgentExecutor, build_agent_card, serve
 
@@ -22,12 +22,11 @@ Your workflow:
 Only SELECT statements are allowed.
 """
 
-MCP_SERVERS: dict[str, Connection] = {
-    "sqlite": {
-        "command": sys.executable,
-        "args": ["-m", "agentic_ai_infrastructure.sqlite_mcp_server"],
-        "transport": "stdio",
-    },
+MCP_SERVERS = {
+    "sqlite": StdioServerParameters(
+        command=sys.executable,
+        args=["-m", "agentic_ai_infrastructure.sqlite_mcp_server"],
+    ),
 }
 
 skill = AgentSkill(
