@@ -1,10 +1,14 @@
-# Agentic AI PoC
+# Agentic AI Infrastructure
 
-A multi-agent system demonstrating three open agentic protocols working together:
+[![checks](https://github.com/ricogross/agentic-ai-infrastructure/actions/workflows/checks.yaml/badge.svg)](https://github.com/ricogross/agentic-ai-infrastructure/actions/workflows/checks.yaml)
 
-- **MCP** (Model Context Protocol) — agents access tools via MCP servers
-- **A2A** (Agent-to-Agent) — the orchestrator agent delegates tasks to specialized agents over HTTP
-- **AG-UI** (Agent-User Interaction) — the orchestrator agent streams agent actions to a React frontend in real time
+A reference multi-agent system that shows three open agentic protocols working together:
+
+- **MCP** (Model Context Protocol) — agents access tools through MCP servers
+- **A2A** (Agent-to-Agent) — an orchestrator agent delegates tasks to specialized agents over HTTP
+- **AG-UI** (Agent-User Interaction) — the orchestrator streams what the agents do to a React frontend in real time
+
+The project started as the proof of concept of a master's seminar paper. The paper and the slides are in [`docs/`](docs/). Since then, the code has been upgraded and hardened step by step; every change on `main` is its own pull request.
 
 ## Architecture
 
@@ -36,54 +40,53 @@ A multi-agent system demonstrating three open agentic protocols working together
                     │ MCP (stdio)                                    │ MCP (stdio)
          ┌──────────▼───────────┐                     ┌──────────────▼──────────┐
          │ sqlite_mcp_server.py │                     │  server-filesystem      │
-         │    accesses local    │                     │     accesses local      │
+         │    accesses local    │                     │     reads local         │
          │    SQLite database   │                     │     directory           │
          │    → demo.db         │                     │     → sandbox/          │
          └──────────────────────┘                     └─────────────────────────┘
 ```
 
-**Four processes** run simultaneously:
+**Four processes** run at the same time (the ports are defaults, see [Configuration](#configuration)):
 
-| Process | File | Port | Role |
-|---------|------|------|------|
-| Database Agent | `a2a_database_agent.py` | 5001 | Queries SQLite via a custom MCP server |
-| Filesystem Agent | `a2a_filesystem_agent.py` | 5002 | Browses/reads files via the prebuilt Filesystem MCP server |
-| Orchestrator | `orchestrator_agent.py` | 8123 | LangGraph agent — routes questions via A2A delegation tools |
-| Frontend | `frontend/` (Next.js) | 3000 | CopilotKit React chat UI |
+| Process | Started with | Port | Role |
+|---------|--------------|------|------|
+| Database Agent | `uv run database-agent` | 5001 | Answers questions about a SQLite database through a custom MCP server |
+| Filesystem Agent | `uv run filesystem-agent` | 5002 | Browses and reads files through the prebuilt Filesystem MCP server |
+| Orchestrator | `uv run langgraph dev --port 8123` | 8123 | LangGraph agent that answers directly or delegates over A2A |
+| Frontend | `pnpm dev` in `frontend/` | 3000 | CopilotKit chat UI (Next.js) |
 
 ## How it works
 
-1. **Orchestrator** — A LangGraph agent with two tools:
-   `ask_database_agent` and `ask_filesystem_agent`. Each tool sends the
-   question to the corresponding A2A agent and returns the response.
+1. **Discovery** — On first use, the orchestrator fetches the Agent Card of every agent in `AGENT_URLS`. For each agent it creates a tool (`ask_database_agent`, `ask_filesystem_agent`) and routing rules for its system prompt, both built from what the card advertises.
 
-2. **LLM routing** — When the user sends a message, the LLM of the **Orchestrator** decides:
+2. **LLM routing** — When the user sends a message, the orchestrator's LLM decides:
    - **Simple questions** → answer directly
-   - **Database questions** → call `ask_database_agent` tool (A2A delegation)
-   - **Filesystem questions** → call `ask_filesystem_agent` tool (A2A delegation)
-   - **Cross-domain questions** → call both tools, synthesize results
+   - **Database questions** → call `ask_database_agent` (A2A delegation)
+   - **Filesystem questions** → call `ask_filesystem_agent` (A2A delegation)
+   - **Cross-domain questions** → call both tools and combine the results
 
-3. **AG-UI streaming** — CopilotKit's `LangGraphAgent` adapter connects to
-   the LangGraph server (`orchestrator_agent.py`) and translates its streaming events into AG-UI events
-   for the React frontend. Tool calls, intermediate steps and streamed text
-   are all visible in the chat UI automatically.
+3. **Delegation** — A tool sends the question to its agent over A2A. The agent's own LLM calls the tools of its MCP server, and its answer streams back to the orchestrator as server-sent events.
+
+4. **AG-UI streaming** — CopilotKit's `LangGraphAgent` adapter connects to the LangGraph server and translates its streaming events into AG-UI events for the React frontend. Tool calls, intermediate steps and streamed text all show up in the chat UI.
 
 ## Protocols
 
 | Protocol | Transport | Where used |
 |----------|-----------|------------|
-| **AG-UI** | HTTP (via CopilotKit + LangGraph) | Frontend ↔ Orchestrator |
-| **A2A** | HTTP, JSON-RPC 2.0 | Orchestrator → Specialized agents |
+| **AG-UI** | HTTP, server-sent events (via CopilotKit + LangGraph) | Frontend ↔ Orchestrator |
+| **A2A** | HTTP, JSON-RPC 2.0, server-sent events (A2A 1.0) | Orchestrator → Specialized agents |
 | **MCP** | stdio, JSON-RPC 2.0 | Specialized agent → Its MCP server |
 
-## Prerequisites
+## Getting started
+
+### Prerequisites
 
 - [uv](https://docs.astral.sh/uv/) (installs Python 3.14 automatically)
 - Node.js 24+
 - pnpm 11 or newer (`npm install -g pnpm@12`); the project pins its exact version in `frontend/package.json`, and pnpm switches to it by itself
 - OpenAI API key
 
-## Initial Setup
+### Setup
 
 ```bash
 # 1. Set up the Python backend (creates .venv from uv.lock)
@@ -100,7 +103,7 @@ cd frontend
 pnpm install
 ```
 
-## Running the Agentic AI system
+### Running the system
 
 Start each service in its own terminal, in any order:
 
@@ -119,8 +122,7 @@ cd frontend
 pnpm dev
 ```
 
-Then open http://localhost:3000 in your browser.
-There the chat UI is hosted.
+Then open http://localhost:3000, where the chat UI runs. The suggestions below the input box show what to ask, e.g. *"What files are in the sandbox? Read the meeting notes for me."*
 
 ## Configuration
 
@@ -135,6 +137,15 @@ Every setting has a default for running the whole system on one machine. The Pyt
 | `AGENT_URLS` | the two agents on `localhost` | orchestrator, comma-separated list of agents to discover |
 | `LANGGRAPH_DEPLOYMENT_URL` | `http://localhost:8123` | frontend, to reach the orchestrator. It is not read from `.env`: set it in the shell before `pnpm dev` or in `frontend/apps/app/.env.local`. It has to match the `--port` of `langgraph dev` |
 
+## Security and guardrails
+
+The agents act on an LLM's decisions, so the tools they get are restricted at the source, not only in the prompt:
+
+- **Database** — The SQLite MCP server opens `demo.db` read-only, and a SQLite authorizer lets `query` only read. SQLite itself rejects writes, `PRAGMA`, `ATTACH` and `VACUUM INTO`. Every query stops after `QUERY_TIME_LIMIT` seconds, so a slow query can't block the server.
+- **Filesystem** — The Filesystem MCP server runs with `--read-only` and only sees `sandbox/`. Its version is pinned, so no new release (and no new tool) arrives unnoticed.
+- **Secrets** — `.env` is not committed. The MCP SDK starts MCP servers with only a short list of safe environment variables (e.g. `PATH`), so the OpenAI API key never reaches them. A `gitleaks` hook scans every commit for secrets.
+- **Supply chain** — `uv.lock` and `pnpm-lock.yaml` pin every dependency, and CI installs exactly those versions. pnpm runs no install scripts of dependencies unless `frontend/pnpm-workspace.yaml` allows them (none are allowed). The CI workflows only get read access to the repository.
+
 ## Development
 
 Ruff (lint and format) and ty (type checks) are dev dependencies and come with `uv sync`:
@@ -145,39 +156,67 @@ uv run ruff format    # format
 uv run ty check       # type-check
 ```
 
-The pre-commit hooks run these checks (plus file hygiene, a secret scan and a Conventional Commits check of the message) on every commit:
+The frontend has its own checks, run in `frontend/`:
 
 ```bash
-uv run pre-commit install           # once per clone
+pnpm lint             # ESLint with the Next.js rules
+pnpm build            # production build, including the TypeScript check
+```
+
+The pre-commit hooks run the Python checks, file hygiene, a secret scan and a Conventional Commits check of the commit message:
+
+```bash
+uv run pre-commit install           # once per clone, installs the pre-commit and commit-msg hooks
 uv run pre-commit run --all-files   # run all hooks by hand
 ```
 
-CI (`.github/workflows/checks.yaml`) runs the same hooks on every pull request, and `main` only accepts pull requests whose checks pass. A second workflow (`pr-title.yaml`) checks that the pull request title is a Conventional Commit, because GitHub uses it as the message of the squash commit on `main`.
+Changes reach `main` only through pull requests, which are squash-merged. A pull request needs three passing checks:
 
-## Files
+| Check | Workflow | What it does |
+|-------|----------|--------------|
+| `pre-commit` | `.github/workflows/checks.yaml` | runs all pre-commit hooks on the whole repository |
+| `frontend` | `.github/workflows/checks.yaml` | installs the frontend from the lockfile, runs `pnpm lint` and `pnpm build` |
+| `pr-title` | `.github/workflows/pr-title.yaml` | checks that the pull request title is a Conventional Commit, because GitHub uses it as the message of the squash commit |
 
-| File | Purpose |
+Branches are named `type/short-description`, e.g. `fix/sqlite-time-limit`, with the same types as the commit messages.
+
+## Known limitations
+
+- **No automated tests yet.** Changes are checked with ad-hoc scripts and end-to-end runs; CI only lints, type-checks and builds.
+- **mcp 2.x is not possible yet.** `langchain-mcp-adapters` still requires `mcp<2`, which also keeps `langgraph-api` below 0.18.
+- **A crashed MCP server is not restarted.** The agents keep one session to each MCP server open; if a server dies, restart its agent.
+- **`localhost` is slow on Windows.** It resolves to IPv6 (`::1`) first, while the agents only listen on `127.0.0.1`, which adds about 0.4 s to every new connection to an agent.
+- **CopilotKit warns about threads.** Its runtime logs that listing and clearing threads needs a caller identity; those endpoints answer 403, the chat itself is not affected.
+
+## Project structure
+
+| Path | Purpose |
 |------|---------|
 | `src/agentic_ai_infrastructure/` | Python package with all backend code (`PROJECT_ROOT` in `__init__.py`) |
 | `src/agentic_ai_infrastructure/orchestrator_agent.py` | LangGraph orchestrator agent — routes requests to specialized agents over A2A or answers them directly |
-| `src/agentic_ai_infrastructure/config.py` | Settings from environment variables and `.env` (see Configuration) |
+| `src/agentic_ai_infrastructure/config.py` | Settings from environment variables and `.env` (see [Configuration](#configuration)) |
 | `src/agentic_ai_infrastructure/a2a_mcp_agent.py` | Shared A2A server for both agents: executor, Agent Card and startup |
 | `src/agentic_ai_infrastructure/a2a_database_agent.py` | A2A server wrapping a LangChain database agent (port 5001) |
 | `src/agentic_ai_infrastructure/a2a_filesystem_agent.py` | A2A server wrapping a LangChain filesystem agent (port 5002) |
 | `src/agentic_ai_infrastructure/sqlite_mcp_server.py` | Custom MCP server exposing SQLite tools |
 | `src/agentic_ai_infrastructure/seed_db.py` | Seeds `demo.db` with sample products and orders |
-| `.env.example` | Template for `.env`: the OpenAI API key and all optional settings |
-| `langgraph.json` | LangGraph server config — points to the orchestrator graph |
-| `sandbox/` | Sample files for the filesystem agent |
+| `sandbox/` | Sample files for the filesystem agent (`notes/`, `data/config.json`) |
 | `frontend/` | CopilotKit + Next.js app (scaffolded via `npx create-ag-ui-app`) |
-| `pyproject.toml` | Python project and pinned dependencies (managed with uv) |
-| `uv.lock` | Locked versions of all Python dependencies |
+| `docs/` | The seminar paper and the slides (PDF) |
+| `langgraph.json` | LangGraph server config — points to the orchestrator's graph factory |
+| `.env.example` | Template for `.env`: the OpenAI API key and all optional settings |
+| `pyproject.toml`, `uv.lock` | Python project, dependencies and their locked versions (managed with uv) |
+| `.pre-commit-config.yaml` | Hooks for every commit (see [Development](#development)) |
+| `.github/workflows/` | CI: `checks.yaml` and `pr-title.yaml` |
+| `.vscode/` | Editor settings and recommended extensions (Python, Ruff, ty, YAML, TOML) |
+
+Running the system creates `demo.db` (by `uv run seed-db`) and one `<name>_mcp_server.log` per MCP server with its stderr. Both are ignored by Git.
 
 ## Deeper dive into the functionality
 
 ### SQLite MCP Server (sqlite_mcp_server.py)
 
-- This file implements a MCP server for exposing a local SQLite database functionalities.
+- This file implements an MCP server that exposes a local SQLite database.
 - `FastMCP` is the high-level API from the MCP Python SDK for building MCP servers. It handles all the JSON-RPC protocol plumbing (serialization, request routing, and response formatting) for registered tools, resources and prompts.
 - When creating a server, metadata can be defined through `instructions` that then can be passed to LLMs as context (tells the model what this server is for).
 - The decorator `@mcp.tool()` registers the corresponding function as an MCP tool. The MCP SDK automatically:
@@ -193,13 +232,13 @@ CI (`.github/workflows/checks.yaml`) runs the same hooks on every pull request, 
 ### Shared A2A agent server (a2a_mcp_agent.py)
 
 - This file sits at the intersection of two protocols. From the outside, an agent built from it is an A2A server — it speaks JSON-RPC, serves an `Agent Card`, receives questions over A2A from the **Orchestrator Agent** and streams responses via SSE. From the inside, it is an MCP client — it spawns MCP servers to answer requests by calling their tools and uses an LLM to reason about the results. The LangChain ReAct agent is the glue between the two. Both specialized agents are built from this file and only define what differs: their MCP servers, their system prompt and their skill.
-- `AgentExecutor` is the A2A SDKs abstract base class. `McpAgentExecutor` implements it for a given set of MCP servers (`mcp_servers`), a `system_prompt` and a `model`.
+- `AgentExecutor` is the A2A SDK's abstract base class. `McpAgentExecutor` implements it for a given set of MCP servers (`mcp_servers`), a `system_prompt` and a `model`.
 - `connected()` starts the MCP servers and builds the LangChain agent. `serve()` runs it as the app's `lifespan`, so this happens once when the agent starts, and the servers stop again when it shuts down. This is also where A2A and MCP connect:
   - `stdio_client()` spawns each MCP server as a subprocess and talks to it over stdin/stdout. The server's stderr goes to a log file, `<name>_mcp_server.log` in the project root.
   - `ClientSession` keeps one MCP session to each server open for all requests. `load_mcp_tools()` sends a `ListToolsRequest` and turns every tool of the server into a LangChain tool that calls it over this session.
   - `handle_tool_error = True` ensures tool errors are returned to the LLM as text rather than crashing the agent.
   - `create_agent()` builds the AI agent — an LLM that can reason about which tools to call, call them, observe the results and iterate until it has an answer.
-- To properly utilize the `AgentExecutor` base class, the `execute()` method is implemented and the A2A framework calls it whenever a message arrives (`context` contains the incoming A2A message (the question from the **Orchestrator Agent**); `event_queue` is used to push events back to the caller (`TaskUpdater` is a convenience wrapper around the event queue)). Since A2A 1.0, the events of a task have to start with the task itself, so `execute()` creates it first (`new_task_from_user_message()`). This is the core — an A2A request comes in, the LLM reasons and calls MCP tools and the response streams back over A2A.
+- `execute()` implements the `AgentExecutor` base class: the A2A framework calls it whenever a message arrives. `context` contains the incoming A2A message (the question from the **Orchestrator Agent**), and `event_queue` is used to push events back to the caller (`TaskUpdater` is a convenience wrapper around the event queue). Since A2A 1.0, the events of a task have to start with the task itself, so `execute()` creates it first (`new_task_from_user_message()`). This is the core — an A2A request comes in, the LLM reasons and calls MCP tools and the response streams back over A2A.
 - `build_agent_card()` builds the `Agent Card`, the A2A discovery mechanism. It is served at `/.well-known/agent-card.json` and tells any A2A client: here is who I am, what I can do, where to reach me and that I support streaming. The **Orchestrator Agent** fetches this before sending any messages.
 - `serve()` does the overall setup:
   - `DefaultRequestHandler` routes incoming A2A JSON-RPC requests to the executor.
@@ -222,21 +261,20 @@ This file is structured like `a2a_database_agent.py`. The only differences are w
 
 ### Orchestrator AI Agent (orchestrator_agent.py)
 
-The **Orchestrator Agent** is the central agent that talks to the user and delegates requests to specialized agents. Unlike the upper two agents, it does not utilize MCP at all. Its "tools" are A2A calls to the other agents. The **Orchestrator Agent** has no prior knowledge of **Database AI Agent** or **Filesystem AI Agent** - it discovers them through their Agent Cards and creates LangChain tools out of the information found there. Then, when a user request comes in, it delegates a task to one of the specialized agents if their capabilities are helpful for handling the request.
+The **Orchestrator Agent** is the central agent that talks to the user and delegates requests to specialized agents. Unlike the two agents above, it does not use MCP at all. Its "tools" are A2A calls to the other agents. The **Orchestrator Agent** has no prior knowledge of the **Database AI Agent** or the **Filesystem AI Agent** — it discovers them through their Agent Cards and creates LangChain tools out of the information found there. Then, when a user request comes in, it delegates a task to one of the specialized agents if their capabilities are helpful for handling the request.
 
 - The `AGENT_URLS` setting is the only thing the orchestrator "knows" upfront — where to look for agents. It doesn't know what they do, what they're called, or what questions to send them. All of that comes from the Agent Cards.
 - `_discover_agents()` is called by `make_graph()`. Iterates over `AGENT_URLS` and fetches each agent's card at GET `{url}/.well-known/agent-card.json`. Returns a list of AgentCard objects containing everything the agent advertised — its name, description, skills, tags, examples. If an agent is unreachable, it prints a warning and skips it. The **Orchestrator Agent** still works — it just won't have a tool for that agent until the agent is reachable.
-- `_delegate()` implements the full A2A client flow - connects with the agent for streaming, sends a message, collects the response from SSE events. `create_client()` takes the `Agent Card` from the discovery and creates an A2A client configured for that agent.
+- `_delegate()` implements the full A2A client flow — connects with the agent for streaming, sends a message, collects the response from SSE events. `create_client()` takes the `Agent Card` from the discovery and creates an A2A client configured for that agent.
 - `_make_tool_name(agent_name: str)` converts the agent's name from the card into a valid LangChain tool name. "Database Agent" becomes `ask_database_agent`, "Filesystem Agent" becomes `ask_filesystem_agent`. If someone adds a "Weather Agent", it would automatically become `ask_weather_agent`.
 - `_build_tools(cards: list[AgentCard])` dynamically creates LangChain tools. The tool `description` — what the LLM reads when deciding which tool to call — is built entirely from the Agent Card's skills, descriptions, and examples. The LLM's routing knowledge comes from the agents themselves, not from manually written docstrings. `StructuredTool.from_function` creates a LangChain tool from a regular function — same as what `@tool` does, but programmatically so we can set the name and description from variables.
-- `_build_system_prompt(cards: list[AgentCard])` pulls the tags (like database, sql, sqlite, query, schema) and examples (like "What tables are in the database?") from each agent's skills and compiles them into routing rules. The LLM sees this and knows how to route — but none of it manually written upfront. It all comes from the Agent Cards.
-- The `SYSTEM_PROMPT` configures the routing logic. It is not hardcoded if/else branching — the LLM reads these rules and decides at runtime which tool to call (or none).
+- `_build_system_prompt(cards: list[AgentCard])` pulls the tags (like database, sql, sqlite, query, schema) and examples (like "What tables are in the database?") from each agent's skills and compiles them into routing rules. The LLM sees this and knows how to route — but none of it is manually written upfront. It all comes from the Agent Cards. It is not hardcoded if/else branching — the LLM reads these rules and decides at runtime which tool to call (or none).
 - `make_graph()` is a *graph factory*: `langgraph.json` points to it, and `langgraph dev` calls it whenever it needs the graph. It discovers the agents, builds the tools and the system prompt from their cards, and `create_agent()` builds an AI agent that loops between LLM reasoning and tool execution. Because the discovery happens on first use instead of when the module is imported, the agents and `langgraph dev` can start in any order. Once every agent in `AGENT_URLS` has answered, the graph is kept; until then, every call looks for the missing agents again.
 - `langgraph dev` wraps the graph in an HTTP API (threads, runs, streaming) and serves it on port 8123. The frontend's CopilotKit connects to that API.
 
 ### React Frontend (frontend/)
 
-The frontend was scaffolded via the command `npx create-ag-ui-app@latest --langgraph-py`. This is a CLI tool from the AG-UI project that generates a Turborepo monorepo with a Next.js + CopilotKit frontend pre-wired for a LangGraph Python backend. It creates `frontend/` (Turborepo root with pnpm workspaces), `frontend/apps/app/` (Next.js app with CopilotKit already installed and configured) and `frontend/apps/agent/` (boilerplate Python LangGraph agent - deleted since a separate agent is defined with **Orchestrator Agent**).
+The frontend was scaffolded via the command `npx create-ag-ui-app@latest --langgraph-py`. This is a CLI tool from the AG-UI project that generates a Turborepo monorepo with a Next.js + CopilotKit frontend pre-wired for a LangGraph Python backend. It creates `frontend/` (Turborepo root with pnpm workspaces), `frontend/apps/app/` (Next.js app with CopilotKit already installed and configured) and `frontend/apps/agent/` (boilerplate Python LangGraph agent — deleted, since the **Orchestrator Agent** takes its place).
 
 From the scaffolded parts, some demo components were deleted and three files were customized:
 
@@ -273,10 +311,10 @@ Next.js API route (route.ts)
   ▼
 LangGraph Server (port 8123)
   │
-  │  Runs orchestrator_agent.py
+  │  Runs the graph from make_graph() (agents discovered on first use)
   │  LLM decides to call ask_database_agent tool
-  │  Tool calls _delegate("http://localhost:5001", question)
-  │  A2A discovery + streaming happens here
+  │  Tool calls _delegate(card, question)
+  │  A2A request + streamed response happen here
   │
   ▼
 Database Agent (port 5001)
@@ -301,7 +339,11 @@ Next.js API route
   ▼
 Browser
   │  CopilotChat receives AG-UI events
-  │  Renders text progressively, shows tool calls in sidebar
+  │  Renders text progressively, shows tool calls in the chat
 ```
 
 The AG-UI protocol is the last leg — between `route.ts` and the browser. No AG-UI encoding code is necessary. The `LangGraphAgent` adapter does the translation automatically: it takes LangGraph's native streaming format and converts it to AG-UI events (e.g. `TEXT_MESSAGE_CONTENT`, `TOOL_CALL_START` or `RUN_STARTED`).
+
+## License
+
+[MIT](LICENSE)
